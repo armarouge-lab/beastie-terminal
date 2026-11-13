@@ -6,6 +6,8 @@ BUILD_DIR="${BEASTIE_ROOT}/.build"
 ST_VERSION="0.9.3"
 ST_TARBALL="st-${ST_VERSION}.tar.gz"
 ST_URL="https://dl.suckless.org/st/${ST_TARBALL}"
+SCROLLBACK_PATCH_URL="https://st.suckless.org/patches/scrollback/st-scrollback-0.9.2.diff"
+SCROLLBACK_PATCH_FILE="${BUILD_DIR}/st-scrollback.diff"
 ST_SOURCE_DIR="${BUILD_DIR}/st-${ST_VERSION}"
 BUILD_LOG="${BUILD_DIR}/build.log"
 FONT_SOURCE_DIR="${BEASTIE_ROOT}/fonts/iosevka"
@@ -154,6 +156,49 @@ downloadSource() {
     logOk "source extracted to ${ST_SOURCE_DIR}"
 }
 
+applyScrollbackPatch() {
+    logInfo "downloading scrollback patch from ${SCROLLBACK_PATCH_URL}"
+    if [ -f "$SCROLLBACK_PATCH_FILE" ]; then
+        logInfo "patch already cached at ${SCROLLBACK_PATCH_FILE}"
+    else
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL -o "$SCROLLBACK_PATCH_FILE" "$SCROLLBACK_PATCH_URL" \
+                || failAndExit "scrollback patch download failed" "$SCROLLBACK_PATCH_URL" \
+                                "check network connectivity"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q -O "$SCROLLBACK_PATCH_FILE" "$SCROLLBACK_PATCH_URL" \
+                || failAndExit "scrollback patch download failed" "$SCROLLBACK_PATCH_URL" \
+                                "check network connectivity"
+        else
+            failAndExit "neither curl nor wget available" "PATH=$PATH" \
+                        "install curl or wget"
+        fi
+    fi
+    (
+        cd "$ST_SOURCE_DIR" || exit 1
+        patch -p1 --forward < "$SCROLLBACK_PATCH_FILE" \
+            || failAndExit "scrollback patch application failed" "$ST_SOURCE_DIR" \
+                            "patch may not match st 0.9.3; check ${SCROLLBACK_PATCH_FILE}"
+    )
+    logOk "scrollback patch applied"
+
+    grep -q '#define[[:space:]][[:space:]]*HISTSIZE' "${ST_SOURCE_DIR}/st.c" \
+        || failAndExit "HISTSIZE define not found in st.c after patch" \
+                        "${ST_SOURCE_DIR}/st.c" \
+                        "patch may not have applied to st.c"
+
+    sed -i.bak 's/^#define[[:space:]][[:space:]]*HISTSIZE[[:space:]][[:space:]]*[0-9][0-9]*/#define HISTSIZE 5000/' \
+        "${ST_SOURCE_DIR}/st.c" \
+        || failAndExit "sed HISTSIZE replacement failed" "${ST_SOURCE_DIR}/st.c" \
+                        "st.c layout changed"
+
+    grep -q '^#define HISTSIZE[[:space:]][[:space:]]*5000' "${ST_SOURCE_DIR}/st.c" \
+        || failAndExit "HISTSIZE not set to 5000 in st.c" "${ST_SOURCE_DIR}/st.c" \
+                        "sed replacement failed"
+
+    logOk "scrollback set to 5000 lines (HISTSIZE in st.c)"
+}
+
 patchConfigMk() {
     configMkPath="${ST_SOURCE_DIR}/config.mk"
     [ -f "$configMkPath" ] \
@@ -277,8 +322,9 @@ reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
     logInfo "next step 1: open an X11 session and run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
     logInfo "next step 2: confirm dark background (#0a0a0a), light foreground (#e0e0e0), orange cursor (#ff6600), Iosevka Term glyphs"
-    logInfo "next step 3: select text, press Ctrl+Shift+C, open another X11 app, press Ctrl+V"
-    logInfo "next step 4: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
+    logInfo "next step 3: run seq 1 200 and press Shift+PgUp to scroll back"
+    logInfo "next step 4: select text, press Ctrl+Shift+C, open another X11 app, press Ctrl+V"
+    logInfo "next step 5: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
 main() {
@@ -287,6 +333,7 @@ main() {
     installDependencies
     installFonts
     downloadSource
+    applyScrollbackPatch
     patchConfigMk
     applyConfigHeader
     buildSource

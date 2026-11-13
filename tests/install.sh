@@ -30,22 +30,6 @@ testAssertContains() {
     esac
 }
 
-testAssertNotContains() {
-    description=$1
-    needle=$2
-    haystack=$3
-    case "$haystack" in
-        *"$needle"*)
-            TEST_FAIL=$((TEST_FAIL + 1))
-            printf '[FAIL] %s: [%s] should NOT be present\n' "$description" "$needle" >&2
-            ;;
-        *)
-            TEST_PASS=$((TEST_PASS + 1))
-            printf '[ OK ] %s\n' "$description"
-            ;;
-    esac
-}
-
 if sh -n "$INSTALL_PATH" 2>"$TEST_ROOT/syntax.err"; then
     TEST_PASS=$((TEST_PASS + 1))
     printf '[ OK ] install.sh has valid POSIX shell syntax\n'
@@ -65,13 +49,13 @@ testAssertContains "install.sh uses BUILD_DIR for artifacts" \
     'BUILD_DIR=' "$installContents"
 testAssertContains "install.sh runs clean before build" \
     '"$BUILD_TOOL" clean' "$installContents"
-testAssertContains "install.sh downloads from suckless.org" \
+testAssertContains "install.sh downloads st from suckless.org" \
     'dl.suckless.org/st' "$installContents"
 testAssertContains "install.sh tolerates apt update partial failure" \
     'apt update reported errors' "$installContents"
 testAssertContains "install.sh defines installFonts" \
     'installFonts()' "$installContents"
-testAssertContains "install.sh invokes installFonts before buildSource" \
+testAssertContains "install.sh invokes installFonts before downloadSource" \
     'installFonts
     downloadSource' "$installContents"
 testAssertContains "install.sh copies bundled TTF files" \
@@ -80,6 +64,24 @@ testAssertContains "install.sh runs fc-cache" \
     'fc-cache -f' "$installContents"
 testAssertContains "install.sh verifies fontconfig sees Iosevka Term" \
     'grep -qi "$FONT_FAMILY"' "$installContents"
+testAssertContains "install.sh defines applyScrollbackPatch" \
+    'applyScrollbackPatch()' "$installContents"
+testAssertContains "install.sh invokes applyScrollbackPatch before patchConfigMk" \
+    'applyScrollbackPatch
+    patchConfigMk' "$installContents"
+testAssertContains "install.sh downloads scrollback patch 0.9.2" \
+    'st-scrollback-0.9.2.diff' "$installContents"
+testAssertContains "install.sh applies scrollback patch with patch -p1" \
+    'patch -p1' "$installContents"
+testAssertContains "install.sh seds HISTSIZE in st.c with flexible whitespace" \
+    's/^#define[[:space:]][[:space:]]*HISTSIZE[[:space:]][[:space:]]*[0-9][0-9]*/#define HISTSIZE 5000/' \
+    "$installContents"
+testAssertContains "install.sh guards on HISTSIZE presence in st.c" \
+    'grep -q '"'"'#define[[:space:]][[:space:]]*HISTSIZE'"'"' "${ST_SOURCE_DIR}/st.c"' \
+    "$installContents"
+testAssertContains "install.sh guards on HISTSIZE 5000 in st.c" \
+    'grep -q '"'"'^#define HISTSIZE[[:space:]][[:space:]]*5000'"'"' "${ST_SOURCE_DIR}/st.c"' \
+    "$installContents"
 testAssertContains "install.sh defines applyConfigHeader" \
     'applyConfigHeader()' "$installContents"
 testAssertContains "install.sh invokes applyConfigHeader before buildSource" \
@@ -109,7 +111,7 @@ testAssertContains "install.sh guards on Ctrl+Shift+C after apply" \
     'grep -q '"'"'ControlMask|ShiftMask, XK_C, clipcopy'"'"'' "$installContents"
 testAssertContains "install.sh guards on Ctrl+Shift+V after apply" \
     'grep -q '"'"'ControlMask|ShiftMask, XK_V, clippaste'"'"'' "$installContents"
-testAssertContains "install.sh keeps patch tool available for future patches" \
+testAssertContains "install.sh keeps patch tool available" \
     'patch \' "$installContents"
 
 if [ "$TEST_FAIL" -gt 0 ]; then
