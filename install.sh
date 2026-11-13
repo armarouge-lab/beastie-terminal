@@ -555,7 +555,7 @@ reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
     logInfo "next step 1: run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
     logInfo "next step 2: confirm dark background with transparency, light foreground, orange cursor, Iosevka Term glyphs"
-    logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st and confirm background follows"
+    logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st to apply (Xresources is read at startup, not on SIGUSR1)"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
     logInfo "next step 5: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
