@@ -69,23 +69,24 @@ testAssertContains "install.sh downloads from suckless.org" \
     'dl.suckless.org/st' "$installContents"
 testAssertContains "install.sh tolerates apt update partial failure" \
     'apt update reported errors' "$installContents"
-testAssertContains "install.sh defines applyOneClipboardPatch" \
-    'applyOneClipboardPatch()' "$installContents"
-testAssertContains "install.sh invokes applyOneClipboardPatch before applyConfigHeader" \
-    'applyOneClipboardPatch
-    patchConfigMk
-    applyConfigHeader' "$installContents"
-testAssertContains "install.sh downloads one clipboard patch" \
-    'st-clipboard-0.8.3.diff' "$installContents"
-testAssertContains "install.sh applies one clipboard patch with patch -p1" \
-    'patch -p1' "$installContents"
+testAssertContains "install.sh defines installFonts" \
+    'installFonts()' "$installContents"
+testAssertContains "install.sh invokes installFonts before buildSource" \
+    'installFonts
+    downloadSource' "$installContents"
+testAssertContains "install.sh copies bundled TTF files" \
+    'cp "$FONT_SOURCE_DIR"/*.ttf' "$installContents"
+testAssertContains "install.sh runs fc-cache" \
+    'fc-cache -f' "$installContents"
+testAssertContains "install.sh verifies fontconfig sees Iosevka Term" \
+    'grep -qi "$FONT_FAMILY"' "$installContents"
 testAssertContains "install.sh defines applyConfigHeader" \
     'applyConfigHeader()' "$installContents"
 testAssertContains "install.sh invokes applyConfigHeader before buildSource" \
     'applyConfigHeader
     buildSource' "$installContents"
-testAssertContains "install.sh sed-replaces font" \
-    'sed -e' "$installContents"
+testAssertContains "install.sh sed-replaces font with Iosevka Term" \
+    'Iosevka Term:size=13:antialias=true:autohint=true' "$installContents"
 testAssertContains "install.sh sed has three # delimiters on Ctrl+Shift+C line" \
     's#{ TERMMOD, *XK_C, *clipcopy,#{ ControlMask|ShiftMask, XK_C, clipcopy,#' \
     "$installContents"
@@ -102,8 +103,8 @@ testAssertContains "install.sh guards on empty config.h after sed" \
     '[ -s "$targetConfig" ]' "$installContents"
 testAssertContains "install.sh guards on Redhot cursor color" \
     'grep -q '"'"'"#ff6600"'"'"'' "$installContents"
-testAssertContains "install.sh guards on font after apply" \
-    'grep -q '"'"'monospace:pixelsize=13:antialias=true:autohint=true'"'"'' "$installContents"
+testAssertContains "install.sh guards on Iosevka font after apply" \
+    'grep -q '"'"'Iosevka Term:size=13:antialias=true:autohint=true'"'"'' "$installContents"
 testAssertContains "install.sh guards on Ctrl+Shift+C after apply" \
     'grep -q '"'"'ControlMask|ShiftMask, XK_C, clipcopy'"'"'' "$installContents"
 testAssertContains "install.sh guards on Ctrl+Shift+V after apply" \

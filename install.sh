@@ -6,10 +6,11 @@ BUILD_DIR="${BEASTIE_ROOT}/.build"
 ST_VERSION="0.9.3"
 ST_TARBALL="st-${ST_VERSION}.tar.gz"
 ST_URL="https://dl.suckless.org/st/${ST_TARBALL}"
-CLIPBOARD_PATCH_URL="https://st.suckless.org/patches/clipboard/st-clipboard-0.8.3.diff"
-CLIPBOARD_PATCH_FILE="${BUILD_DIR}/st-one-clipboard.diff"
 ST_SOURCE_DIR="${BUILD_DIR}/st-${ST_VERSION}"
 BUILD_LOG="${BUILD_DIR}/build.log"
+FONT_SOURCE_DIR="${BEASTIE_ROOT}/fonts/iosevka"
+FONT_TARGET_DIR="${HOME}/.local/share/fonts/iosevka"
+FONT_FAMILY="Iosevka Term"
 
 logInfo() { printf '[info] %s\n' "$1" >&2; }
 logOk()   { printf '[ OK ] %s\n' "$1" >&2; }
@@ -59,13 +60,15 @@ installDependencies() {
                 libfreetype6-dev \
                 pkg-config \
                 patch \
+                fontconfig \
+                unzip \
                 || failAndExit "apt install failed" "apt" \
                                 "check network connectivity and mirror availability"
             ;;
         dnf)
             logInfo "installing dependencies via dnf"
             dnf install -y \
-                gcc make patch \
+                gcc make patch unzip \
                 libX11-devel libXft-devel \
                 fontconfig-devel freetype-devel \
                 pkgconf-pkg-config \
@@ -76,7 +79,7 @@ installDependencies() {
             logInfo "installing dependencies via pacman"
             pacman -Syu --noconfirm \
                 base-devel libx11 libxft \
-                fontconfig freetype2 pkgconf patch \
+                fontconfig freetype2 pkgconf patch unzip \
                 || failAndExit "pacman install failed" "pacman" \
                                 "check network and mirror availability"
             ;;
@@ -84,7 +87,7 @@ installDependencies() {
             logInfo "installing dependencies via pkg"
             pkg install -y \
                 gcc gmake libX11 libXft \
-                fontconfig freetype2 pkgconf patch \
+                fontconfig freetype2 pkgconf patch unzip \
                 || failAndExit "pkg install failed" "pkg" \
                                 "check network and repository availability"
             ;;
@@ -94,6 +97,31 @@ installDependencies() {
             ;;
     esac
     logOk "dependencies installed via ${PKG}"
+}
+
+installFonts() {
+    [ -d "$FONT_SOURCE_DIR" ] \
+        || failAndExit "bundled font directory missing" "$FONT_SOURCE_DIR" \
+                        "add Iosevka Term TTF files plus OFL.txt to fonts/iosevka/"
+    fontFileCount=$(find "$FONT_SOURCE_DIR" -maxdepth 1 -name '*.ttf' -type f | wc -l | tr -d ' ')
+    [ "$fontFileCount" -gt 0 ] \
+        || failAndExit "no TTF files in bundled font directory" "$FONT_SOURCE_DIR" \
+                        "the repository must ship fonts/iosevka/*.ttf"
+    mkdir -p "$FONT_TARGET_DIR"
+    cp "$FONT_SOURCE_DIR"/*.ttf "$FONT_TARGET_DIR"/
+    if command -v fc-cache >/dev/null 2>&1; then
+        fc-cache -f >/dev/null 2>&1 \
+            || failAndExit "fc-cache failed" "$FONT_TARGET_DIR" \
+                            "check fontconfig installation"
+    else
+        failAndExit "fc-cache not found" "PATH=$PATH" \
+                    "install fontconfig"
+    fi
+    if ! fc-list : family 2>/dev/null | grep -qi "$FONT_FAMILY"; then
+        failAndExit "fontconfig cannot see the installed font" "$FONT_TARGET_DIR" \
+                    "run fc-list | grep -i 'Iosevka' and check the family name"
+    fi
+    logOk "Iosevka Term installed under ${FONT_TARGET_DIR} and cached by fontconfig"
 }
 
 downloadSource() {
@@ -124,37 +152,6 @@ downloadSource() {
         || failAndExit "extracted directory missing" "$ST_SOURCE_DIR" \
                         "upstream tarball layout changed"
     logOk "source extracted to ${ST_SOURCE_DIR}"
-}
-
-applyOneClipboardPatch() {
-    if grep -q 'XSetSelectionOwner(xw.dpy, clipboard' "${ST_SOURCE_DIR}/x.c" 2>/dev/null; then
-        logInfo "one clipboard support already present; skipping patch"
-        return 0
-    fi
-    logInfo "downloading one clipboard patch from ${CLIPBOARD_PATCH_URL}"
-    if [ -f "$CLIPBOARD_PATCH_FILE" ]; then
-        logInfo "patch already cached at ${CLIPBOARD_PATCH_FILE}"
-    else
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL -o "$CLIPBOARD_PATCH_FILE" "$CLIPBOARD_PATCH_URL" \
-                || failAndExit "one clipboard patch download failed" "$CLIPBOARD_PATCH_URL" \
-                                "check network connectivity"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q -O "$CLIPBOARD_PATCH_FILE" "$CLIPBOARD_PATCH_URL" \
-                || failAndExit "one clipboard patch download failed" "$CLIPBOARD_PATCH_URL" \
-                                "check network connectivity"
-        else
-            failAndExit "neither curl nor wget available" "PATH=$PATH" \
-                        "install curl or wget"
-        fi
-    fi
-    (
-        cd "$ST_SOURCE_DIR" || exit 1
-        patch -p1 --forward < "$CLIPBOARD_PATCH_FILE" \
-            || failAndExit "one clipboard patch application failed" "$ST_SOURCE_DIR" \
-                            "patch may not match st 0.9.3; check ${CLIPBOARD_PATCH_FILE}"
-    )
-    logOk "one clipboard patch applied (st now sets CLIPBOARD on selection)"
 }
 
 patchConfigMk() {
@@ -189,7 +186,7 @@ applyConfigHeader() {
         || failAndExit "stock config.def.h missing" "$stockConfig" \
                         "upstream tarball layout changed"
 
-    sed -e 's#^static char \*font = ".*";#static char *font = "monospace:pixelsize=13:antialias=true:autohint=true";#' \
+    sed -e 's#^static char \*font = ".*";#static char *font = "Iosevka Term:size=13:antialias=true:autohint=true";#' \
         -e 's#{ TERMMOD, *XK_C, *clipcopy,#{ ControlMask|ShiftMask, XK_C, clipcopy,#' \
         -e 's#{ TERMMOD, *XK_V, *clippaste,#{ ControlMask|ShiftMask, XK_V, clippaste,#' \
         "$stockConfig" > "$targetConfig" \
@@ -234,9 +231,9 @@ applyConfigHeader() {
                         "stock config.def.h layout changed"
     mv "$targetConfig.tmp" "$targetConfig"
 
-    grep -q 'monospace:pixelsize=13:antialias=true:autohint=true' "$targetConfig" \
-        || failAndExit "font not applied to config.h" "$targetConfig" \
-                        "sed pattern may need adjustment"
+    grep -q 'Iosevka Term:size=13:antialias=true:autohint=true' "$targetConfig" \
+        || failAndExit "Iosevka font not applied to config.h" "$targetConfig" \
+                        "sed font replacement failed"
     grep -q '"#ff6600"' "$targetConfig" \
         || failAndExit "redhot cursor color missing from config.h" "$targetConfig" \
                         "awk pattern may need adjustment"
@@ -247,7 +244,7 @@ applyConfigHeader() {
         || failAndExit "Ctrl+Shift+V keybinding missing from config.h" "$targetConfig" \
                         "sed mask replacement failed"
 
-    logOk "config.h themed with Redhot palette, monospace font, and Ctrl+Shift+C/V"
+    logOk "config.h themed with Redhot palette, Iosevka Term, and Ctrl+Shift+C/V"
 }
 
 buildSource() {
@@ -279,8 +276,8 @@ buildSource() {
 reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
     logInfo "next step 1: open an X11 session and run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
-    logInfo "next step 2: confirm dark background (#0a0a0a), light foreground (#e0e0e0), orange cursor (#ff6600)"
-    logInfo "next step 3: select text, press Ctrl+Shift+C, open another X11 app (xterm, browser), press Ctrl+V"
+    logInfo "next step 2: confirm dark background (#0a0a0a), light foreground (#e0e0e0), orange cursor (#ff6600), Iosevka Term glyphs"
+    logInfo "next step 3: select text, press Ctrl+Shift+C, open another X11 app, press Ctrl+V"
     logInfo "next step 4: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
@@ -288,8 +285,8 @@ main() {
     ensureExecutableBits
     detectEnvironment
     installDependencies
+    installFonts
     downloadSource
-    applyOneClipboardPatch
     patchConfigMk
     applyConfigHeader
     buildSource
