@@ -10,6 +10,8 @@ SCROLLBACK_PATCH_URL="https://st.suckless.org/patches/scrollback/st-scrollback-0
 SCROLLBACK_PATCH_FILE="${BUILD_DIR}/st-scrollback.diff"
 ALPHA_PATCH_URL="https://st.suckless.org/patches/alpha/st-alpha-20220206-0.8.5.diff"
 ALPHA_PATCH_FILE="${BUILD_DIR}/st-alpha.diff"
+XRESOURCES_PATCH_URL="https://st.suckless.org/patches/xresources/st-xresources-20200604-9ba7ecf.diff"
+XRESOURCES_PATCH_FILE="${BUILD_DIR}/st-xresources.diff"
 ST_SOURCE_DIR="${BUILD_DIR}/st-${ST_VERSION}"
 BUILD_LOG="${BUILD_DIR}/build.log"
 FONT_SOURCE_DIR="${BEASTIE_ROOT}/fonts/iosevka"
@@ -68,6 +70,7 @@ installDependencies() {
                 fontconfig \
                 unzip \
                 picom \
+                x11-xserver-utils \
                 || failAndExit "apt install failed" "apt" \
                                 "check network connectivity and mirror availability"
             ;;
@@ -79,6 +82,7 @@ installDependencies() {
                 fontconfig-devel freetype-devel \
                 pkgconf-pkg-config \
                 picom \
+                xorg-x11-xrdb \
                 || failAndExit "dnf install failed" "dnf" \
                                 "check network and repository availability"
             ;;
@@ -88,6 +92,7 @@ installDependencies() {
                 base-devel libx11 libxft libxrender \
                 fontconfig freetype2 pkgconf patch unzip \
                 picom \
+                xorg-xrdb \
                 || failAndExit "pacman install failed" "pacman" \
                                 "check network and mirror availability"
             ;;
@@ -97,6 +102,7 @@ installDependencies() {
                 gcc gmake libX11 libXft libXrender \
                 fontconfig freetype2 pkgconf patch unzip \
                 picom \
+                xrdb \
                 || failAndExit "pkg install failed" "pkg" \
                                 "check network and repository availability"
             ;;
@@ -310,6 +316,62 @@ applyAlphaPatch() {
     logOk "alpha = 0.95 set in config.def.h and -lXrender added to config.mk"
 }
 
+applyXresourcesPatch() {
+    if grep -q 'resources\[\]' "${ST_SOURCE_DIR}/config.def.h" 2>/dev/null; then
+        logInfo "xresources support already present; skipping patch"
+    else
+        logInfo "downloading xresources patch from ${XRESOURCES_PATCH_URL}"
+        if [ -f "$XRESOURCES_PATCH_FILE" ]; then
+            logInfo "patch already cached at ${XRESOURCES_PATCH_FILE}"
+        else
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsSL -o "$XRESOURCES_PATCH_FILE" "$XRESOURCES_PATCH_URL" \
+                    || failAndExit "xresources patch download failed" "$XRESOURCES_PATCH_URL" \
+                                    "check network connectivity"
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q -O "$XRESOURCES_PATCH_FILE" "$XRESOURCES_PATCH_URL" \
+                    || failAndExit "xresources patch download failed" "$XRESOURCES_PATCH_URL" \
+                                    "check network connectivity"
+            else
+                failAndExit "neither curl nor wget available" "PATH=$PATH" \
+                            "install curl or wget"
+            fi
+        fi
+        (
+            cd "$ST_SOURCE_DIR" || exit 1
+            patch -p1 --forward < "$XRESOURCES_PATCH_FILE" || true
+        )
+
+        rejDir="${BUILD_DIR}/xresources-rej"
+        if [ -f "${ST_SOURCE_DIR}/x.c.rej" ] || [ -f "${ST_SOURCE_DIR}/config.def.h.rej" ]; then
+            mkdir -p "$rejDir"
+            cp "${ST_SOURCE_DIR}"/*.rej "$rejDir/" 2>/dev/null || true
+            logWarn "xresources patch had rejections; copies saved to ${rejDir}"
+            failAndExit "xresources patch rejected one or more hunks" \
+                        "${rejDir}" \
+                        "inspect the .rej files and report to get a manual fallback"
+        fi
+        logOk "xresources patch applied"
+    fi
+
+    grep -q 'resources\[\]' "${ST_SOURCE_DIR}/config.def.h" \
+        || failAndExit "resources[] not found in config.def.h" \
+                        "${ST_SOURCE_DIR}/config.def.h" \
+                        "patch may have failed"
+
+    grep -q 'XrmGetStringDatabase\|XResourceManagerString\|XrmInitialize' "${ST_SOURCE_DIR}/x.c" \
+        || failAndExit "Xrm API not found in x.c after xresources patch" \
+                        "${ST_SOURCE_DIR}/x.c" \
+                        "patch may not have applied to x.c"
+
+    grep -q '{ "background",.*colorname\[256\]' "${ST_SOURCE_DIR}/config.def.h" \
+        || failAndExit "xresources patch no longer maps background to colorname[256]" \
+                        "${ST_SOURCE_DIR}/config.def.h" \
+                        "patch version changed; verify resources[] indices before updating defaults"
+
+    logOk "xresources wired into config.def.h and x.c"
+}
+
 applyConfigHeader() {
     stockConfig="${ST_SOURCE_DIR}/config.def.h"
     targetConfig="${ST_SOURCE_DIR}/config.h"
@@ -333,7 +395,7 @@ applyConfigHeader() {
         normal[4] = "#5b9dd9"; normal[5] = "#d97ea3"; normal[6] = "#7ec9c9"; normal[7] = "#e0e0e0"
         bright[0] = "#7a7a7a"; bright[1] = "#ff6b4a"; bright[2] = "#c3e88d"; bright[3] = "#ffd166"
         bright[4] = "#82aaff"; bright[5] = "#f78ca2"; bright[6] = "#89ddff"; bright[7] = "#ffffff"
-        extra[0] = "#ff6600"; extra[1] = "#555555"; extra[2] = "#e0e0e0"; extra[3] = "#0a0a0a"
+        extra[0] = "#0a0a0a"; extra[1] = "#e0e0e0"; extra[2] = "#ff6600"; extra[3] = "#555555"
     }
     /^static const char \*colorname/ {
         inArray = 1
@@ -362,6 +424,19 @@ applyConfigHeader() {
                         "stock config.def.h layout changed"
     mv "$targetConfig.tmp" "$targetConfig"
 
+    sed -i.bak3 \
+        -e 's/^unsigned int defaultfg = [0-9][0-9]*;/unsigned int defaultfg = 257;/' \
+        -e 's/^static unsigned int defaultfg = [0-9][0-9]*;/static unsigned int defaultfg = 257;/' \
+        -e 's/^unsigned int defaultbg = [0-9][0-9]*;/unsigned int defaultbg = 256;/' \
+        -e 's/^static unsigned int defaultbg = [0-9][0-9]*;/static unsigned int defaultbg = 256;/' \
+        -e 's/^unsigned int defaultcs = [0-9][0-9]*;/unsigned int defaultcs = 258;/' \
+        -e 's/^static unsigned int defaultcs = [0-9][0-9]*;/static unsigned int defaultcs = 258;/' \
+        -e 's/^unsigned int defaultrcs = [0-9][0-9]*;/unsigned int defaultrcs = 259;/' \
+        -e 's/^static unsigned int defaultrcs = [0-9][0-9]*;/static unsigned int defaultrcs = 259;/' \
+        "$targetConfig" \
+        || failAndExit "sed defaultXX alignment failed" "$targetConfig" \
+                        "config.h layout changed"
+
     grep -q 'Iosevka Term:size=13:antialias=true:autohint=true' "$targetConfig" \
         || failAndExit "Iosevka font not applied to config.h" "$targetConfig" \
                         "sed font replacement failed"
@@ -377,8 +452,20 @@ applyConfigHeader() {
     grep -q '^float alpha = 0.95;' "$targetConfig" \
         || failAndExit "alpha = 0.95 missing from config.h" "$targetConfig" \
                         "alpha field may have been clobbered"
+    grep -q 'resources\[\]' "$targetConfig" \
+        || failAndExit "resources[] missing from config.h" "$targetConfig" \
+                        "xresources array may have been clobbered by awk"
+    grep -q 'unsigned int defaultbg = 256;' "$targetConfig" \
+        || failAndExit "defaultbg not aligned to 256 in config.h" "$targetConfig" \
+                        "sed defaultXX alignment failed"
+    grep -q 'unsigned int defaultfg = 257;' "$targetConfig" \
+        || failAndExit "defaultfg not aligned to 257 in config.h" "$targetConfig" \
+                        "sed defaultXX alignment failed"
+    grep -q 'unsigned int defaultcs = 258;' "$targetConfig" \
+        || failAndExit "defaultcs not aligned to 258 in config.h" "$targetConfig" \
+                        "sed defaultXX alignment failed"
 
-    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, and alpha 0.95"
+    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, alpha 0.95, xresources, aligned defaultXX"
 }
 
 buildSource() {
@@ -407,12 +494,69 @@ buildSource() {
     logOk "st ${ST_VERSION} built at ${stBinaryPath}"
 }
 
+installXresources() {
+    xresourcesFile="${HOME}/.Xresources"
+
+    if [ -f "$xresourcesFile" ]; then
+        if [ -n "$(tail -c 1 "$xresourcesFile")" ]; then
+            printf '\n' >> "$xresourcesFile" \
+                || failAndExit "cannot append newline to Xresources" "$xresourcesFile" \
+                                "check file permissions"
+            logInfo "added missing trailing newline to ${xresourcesFile}"
+        fi
+    else
+        touch "$xresourcesFile" \
+            || failAndExit "cannot create Xresources file" "$xresourcesFile" \
+                            "check HOME permissions"
+    fi
+
+    tmpFile="${xresourcesFile}.beastie.tmp"
+    if grep -q '^st\.' "$xresourcesFile"; then
+        grep -v '^st\.' "$xresourcesFile" > "$tmpFile" \
+            || failAndExit "cannot filter Xresources" "$xresourcesFile" \
+                            "check file permissions"
+        mv "$tmpFile" "$xresourcesFile" \
+            || failAndExit "cannot replace Xresources" "$xresourcesFile" \
+                            "check directory permissions"
+        logInfo "removed previous st.* properties from ${xresourcesFile}"
+    fi
+
+    for propertyLine in \
+        'st.background: #0a0a0a' \
+        'st.foreground: #e0e0e0' \
+        'st.cursorColor: #ff6600' \
+        'st.font: Iosevka Term:size=13'; do
+        printf '%s\n' "$propertyLine" >> "$xresourcesFile" \
+            || failAndExit "cannot append to Xresources" "$xresourcesFile" \
+                            "check file permissions"
+    done
+    logOk "wrote 4 st.* properties to ${xresourcesFile}"
+
+    if ! command -v xrdb >/dev/null 2>&1; then
+        logWarn "xrdb not found; skipping merge (Xsession will load ~/.Xresources on next login)"
+        return 0
+    fi
+
+    xrdb -merge "$xresourcesFile" \
+        || failAndExit "xrdb merge failed" "$xresourcesFile" \
+                        "check DISPLAY is set and X11 is running"
+
+    if ! xrdb -query 2>/dev/null | grep -q '^st\.background:'; then
+        xrdbDebug=$(xrdb -query 2>&1 | grep '^st\.' || true)
+        failAndExit "st.background not present after xrdb merge" \
+                    "$xresourcesFile" \
+                    "xrdb loaded: [${xrdbDebug}]"
+    fi
+
+    logOk "~/.Xresources merged into running X server (st.* active)"
+}
+
 reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
-    logInfo "next step 1: run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x' (compositor should already be active on this desktop)"
-    logInfo "next step 2: confirm dark background (#0a0a0a) with subtle transparency, light foreground (#e0e0e0), orange cursor (#ff6600), Iosevka Term glyphs"
-    logInfo "next step 3: run seq 1 200 and press Shift+PgUp to scroll back"
-    logInfo "next step 4: select text, press Ctrl+Shift+C, open another X11 app, press Ctrl+V"
+    logInfo "next step 1: run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
+    logInfo "next step 2: confirm dark background with transparency, light foreground, orange cursor, Iosevka Term glyphs"
+    logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st and confirm background follows"
+    logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
     logInfo "next step 5: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
@@ -425,8 +569,10 @@ main() {
     applyScrollbackPatch
     patchConfigMk
     applyAlphaPatch
+    applyXresourcesPatch
     applyConfigHeader
     buildSource
+    installXresources
     reportNextSteps
     logOk "install.sh finished successfully"
 }
