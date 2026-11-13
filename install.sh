@@ -8,6 +8,8 @@ ST_TARBALL="st-${ST_VERSION}.tar.gz"
 ST_URL="https://dl.suckless.org/st/${ST_TARBALL}"
 SCROLLBACK_PATCH_URL="https://st.suckless.org/patches/scrollback/st-scrollback-0.9.2.diff"
 SCROLLBACK_PATCH_FILE="${BUILD_DIR}/st-scrollback.diff"
+ALPHA_PATCH_URL="https://st.suckless.org/patches/alpha/st-alpha-20220206-0.8.5.diff"
+ALPHA_PATCH_FILE="${BUILD_DIR}/st-alpha.diff"
 ST_SOURCE_DIR="${BUILD_DIR}/st-${ST_VERSION}"
 BUILD_LOG="${BUILD_DIR}/build.log"
 FONT_SOURCE_DIR="${BEASTIE_ROOT}/fonts/iosevka"
@@ -58,12 +60,14 @@ installDependencies() {
                 build-essential \
                 libx11-dev \
                 libxft-dev \
+                libxrender-dev \
                 libfontconfig1-dev \
                 libfreetype6-dev \
                 pkg-config \
                 patch \
                 fontconfig \
                 unzip \
+                picom \
                 || failAndExit "apt install failed" "apt" \
                                 "check network connectivity and mirror availability"
             ;;
@@ -71,25 +75,28 @@ installDependencies() {
             logInfo "installing dependencies via dnf"
             dnf install -y \
                 gcc make patch unzip \
-                libX11-devel libXft-devel \
+                libX11-devel libXft-devel libXrender-devel \
                 fontconfig-devel freetype-devel \
                 pkgconf-pkg-config \
+                picom \
                 || failAndExit "dnf install failed" "dnf" \
                                 "check network and repository availability"
             ;;
         pacman)
             logInfo "installing dependencies via pacman"
             pacman -Syu --noconfirm \
-                base-devel libx11 libxft \
+                base-devel libx11 libxft libxrender \
                 fontconfig freetype2 pkgconf patch unzip \
+                picom \
                 || failAndExit "pacman install failed" "pacman" \
                                 "check network and mirror availability"
             ;;
         pkg)
             logInfo "installing dependencies via pkg"
             pkg install -y \
-                gcc gmake libX11 libXft \
+                gcc gmake libX11 libXft libXrender \
                 fontconfig freetype2 pkgconf patch unzip \
+                picom \
                 || failAndExit "pkg install failed" "pkg" \
                                 "check network and repository availability"
             ;;
@@ -224,6 +231,85 @@ patchConfigMk() {
     logOk "config.mk prepared for ${OS}"
 }
 
+applyAlphaPatch() {
+    if grep -q '^float alpha = ' "${ST_SOURCE_DIR}/config.def.h" 2>/dev/null; then
+        logInfo "alpha support already present; skipping patch"
+    else
+        logInfo "downloading alpha patch from ${ALPHA_PATCH_URL}"
+        if [ -f "$ALPHA_PATCH_FILE" ]; then
+            logInfo "patch already cached at ${ALPHA_PATCH_FILE}"
+        else
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsSL -o "$ALPHA_PATCH_FILE" "$ALPHA_PATCH_URL" \
+                    || failAndExit "alpha patch download failed" "$ALPHA_PATCH_URL" \
+                                    "check network connectivity"
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q -O "$ALPHA_PATCH_FILE" "$ALPHA_PATCH_URL" \
+                    || failAndExit "alpha patch download failed" "$ALPHA_PATCH_URL" \
+                                    "check network connectivity"
+            else
+                failAndExit "neither curl nor wget available" "PATH=$PATH" \
+                            "install curl or wget"
+            fi
+        fi
+        (
+            cd "$ST_SOURCE_DIR" || exit 1
+            patch -p1 --forward < "$ALPHA_PATCH_FILE" || true
+        )
+
+        if [ -f "${ST_SOURCE_DIR}/x.c.rej" ]; then
+            if grep -q '@@.*xinit(int cols, int rows)' "${ST_SOURCE_DIR}/x.c.rej"; then
+                logWarn "alpha patch hunk for xinit() was rejected (known st 0.9.3 incompatibility); applying manual fallback"
+                rm -f "${ST_SOURCE_DIR}/x.c.rej"
+                sed -i.bak2 \
+                    -e 's/XDefaultDepth(xw\.dpy, xw\.scr)/xw.depth/g' \
+                    -e 's/DefaultDepth(xw\.dpy, xw\.scr)/xw.depth/g' \
+                    "${ST_SOURCE_DIR}/x.c" \
+                    || failAndExit "sed alpha fallback failed" "${ST_SOURCE_DIR}/x.c" \
+                                    "x.c layout changed"
+                if grep -q 'XDefaultDepth\|DefaultDepth(xw\.dpy' "${ST_SOURCE_DIR}/x.c"; then
+                    failAndExit "DefaultDepth still present in x.c after fallback" \
+                                "${ST_SOURCE_DIR}/x.c" \
+                                "sed replacement incomplete"
+                fi
+                logOk "alpha hunk 7 manually applied (xw.depth for window and pixmap)"
+            else
+                failAndExit "alpha patch rejected an unknown hunk" \
+                            "${ST_SOURCE_DIR}/x.c.rej" \
+                            "patch is incompatible with st 0.9.3; inspect the .rej file"
+            fi
+        fi
+        logOk "alpha patch applied"
+    fi
+
+    grep -q '^float alpha = [0-9]' "${ST_SOURCE_DIR}/config.def.h" \
+        || failAndExit "alpha field not found in config.def.h after patch" \
+                        "${ST_SOURCE_DIR}/config.def.h" \
+                        "patch may not have added the alpha field"
+
+    sed -i.bak 's/^float alpha = [0-9][0-9]*\.[0-9][0-9]*;/float alpha = 0.95;/' \
+        "${ST_SOURCE_DIR}/config.def.h" \
+        || failAndExit "sed alpha replacement failed" "${ST_SOURCE_DIR}/config.def.h" \
+                        "config.def.h layout changed"
+
+    grep -q '^float alpha = 0.95;' "${ST_SOURCE_DIR}/config.def.h" \
+        || failAndExit "alpha not set to 0.95 in config.def.h" "${ST_SOURCE_DIR}/config.def.h" \
+                        "sed replacement failed"
+
+    if ! grep -q -- '-lXrender' "${ST_SOURCE_DIR}/config.mk"; then
+        sed -i.bak 's/-lXft/-lXft -lXrender/' "${ST_SOURCE_DIR}/config.mk" \
+            || failAndExit "sed -lXrender injection failed" "${ST_SOURCE_DIR}/config.mk" \
+                            "config.mk layout changed"
+    fi
+
+    grep -q -- '-lXrender' "${ST_SOURCE_DIR}/config.mk" \
+        || failAndExit "-lXrender missing from config.mk after sed" \
+                        "${ST_SOURCE_DIR}/config.mk" \
+                        "sed injection failed"
+
+    logOk "alpha = 0.95 set in config.def.h and -lXrender added to config.mk"
+}
+
 applyConfigHeader() {
     stockConfig="${ST_SOURCE_DIR}/config.def.h"
     targetConfig="${ST_SOURCE_DIR}/config.h"
@@ -288,8 +374,11 @@ applyConfigHeader() {
     grep -q 'ControlMask|ShiftMask, XK_V, clippaste' "$targetConfig" \
         || failAndExit "Ctrl+Shift+V keybinding missing from config.h" "$targetConfig" \
                         "sed mask replacement failed"
+    grep -q '^float alpha = 0.95;' "$targetConfig" \
+        || failAndExit "alpha = 0.95 missing from config.h" "$targetConfig" \
+                        "alpha field may have been clobbered"
 
-    logOk "config.h themed with Redhot palette, Iosevka Term, and Ctrl+Shift+C/V"
+    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, and alpha 0.95"
 }
 
 buildSource() {
@@ -320,8 +409,8 @@ buildSource() {
 
 reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
-    logInfo "next step 1: open an X11 session and run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
-    logInfo "next step 2: confirm dark background (#0a0a0a), light foreground (#e0e0e0), orange cursor (#ff6600), Iosevka Term glyphs"
+    logInfo "next step 1: run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x' (compositor should already be active on this desktop)"
+    logInfo "next step 2: confirm dark background (#0a0a0a) with subtle transparency, light foreground (#e0e0e0), orange cursor (#ff6600), Iosevka Term glyphs"
     logInfo "next step 3: run seq 1 200 and press Shift+PgUp to scroll back"
     logInfo "next step 4: select text, press Ctrl+Shift+C, open another X11 app, press Ctrl+V"
     logInfo "next step 5: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
@@ -335,6 +424,7 @@ main() {
     downloadSource
     applyScrollbackPatch
     patchConfigMk
+    applyAlphaPatch
     applyConfigHeader
     buildSource
     reportNextSteps

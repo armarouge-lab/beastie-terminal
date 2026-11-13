@@ -53,6 +53,10 @@ testAssertContains "install.sh downloads st from suckless.org" \
     'dl.suckless.org/st' "$installContents"
 testAssertContains "install.sh tolerates apt update partial failure" \
     'apt update reported errors' "$installContents"
+testAssertContains "install.sh installs picom for transparency" \
+    'picom' "$installContents"
+testAssertContains "install.sh installs libxrender-dev for alpha" \
+    'libxrender-dev' "$installContents"
 testAssertContains "install.sh defines installFonts" \
     'installFonts()' "$installContents"
 testAssertContains "install.sh invokes installFonts before downloadSource" \
@@ -81,6 +85,33 @@ testAssertContains "install.sh guards on HISTSIZE presence in st.c" \
     "$installContents"
 testAssertContains "install.sh guards on HISTSIZE 5000 in st.c" \
     'grep -q '"'"'^#define HISTSIZE[[:space:]][[:space:]]*5000'"'"' "${ST_SOURCE_DIR}/st.c"' \
+    "$installContents"
+testAssertContains "install.sh defines applyAlphaPatch" \
+    'applyAlphaPatch()' "$installContents"
+testAssertContains "install.sh invokes applyAlphaPatch before applyConfigHeader" \
+    'applyAlphaPatch
+    applyConfigHeader' "$installContents"
+testAssertContains "install.sh downloads alpha patch" \
+    'st-alpha-20220206-0.8.5.diff' "$installContents"
+testAssertContains "install.sh seds alpha to 0.95 in config.def.h without static" \
+    's/^float alpha = [0-9][0-9]*\.[0-9][0-9]*;/float alpha = 0.95;/' \
+    "$installContents"
+testAssertContains "install.sh injects -lXrender into config.mk" \
+    's/-lXft/-lXft -lXrender/' "$installContents"
+testAssertContains "install.sh has fallback for rejected alpha hunk" \
+    'alpha patch hunk for xinit() was rejected' "$installContents"
+testAssertContains "install.sh fallback seds XDefaultDepth to xw.depth" \
+    's/XDefaultDepth(xw\.dpy, xw\.scr)/xw.depth/g' "$installContents"
+testAssertContains "install.sh fallback seds DefaultDepth to xw.depth" \
+    's/DefaultDepth(xw\.dpy, xw\.scr)/xw.depth/g' "$installContents"
+testAssertContains "install.sh guards on alpha in config.def.h after patch" \
+    'grep -q '"'"'^float alpha = [0-9]'"'"' "${ST_SOURCE_DIR}/config.def.h"' \
+    "$installContents"
+testAssertContains "install.sh guards on alpha 0.95 in config.def.h" \
+    'grep -q '"'"'^float alpha = 0.95;'"'"' "${ST_SOURCE_DIR}/config.def.h"' \
+    "$installContents"
+testAssertContains "install.sh guards on -lXrender in config.mk" \
+    'grep -q -- '"'"'-lXrender'"'"' "${ST_SOURCE_DIR}/config.mk"' \
     "$installContents"
 testAssertContains "install.sh defines applyConfigHeader" \
     'applyConfigHeader()' "$installContents"
@@ -111,6 +142,9 @@ testAssertContains "install.sh guards on Ctrl+Shift+C after apply" \
     'grep -q '"'"'ControlMask|ShiftMask, XK_C, clipcopy'"'"'' "$installContents"
 testAssertContains "install.sh guards on Ctrl+Shift+V after apply" \
     'grep -q '"'"'ControlMask|ShiftMask, XK_V, clippaste'"'"'' "$installContents"
+testAssertContains "install.sh guards on alpha 0.95 in config.h after apply" \
+    'grep -q '"'"'^float alpha = 0.95;'"'"' "$targetConfig"' \
+    "$installContents"
 testAssertContains "install.sh keeps patch tool available" \
     'patch \' "$installContents"
 
