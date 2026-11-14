@@ -4,6 +4,7 @@ set -eu
 BEASTIE_ROOT=$(cd "$(dirname "$0")" && pwd)
 BUILD_DIR="${BEASTIE_ROOT}/.build"
 ST_VERSION="0.9.3"
+BEASTIE_VERSION="1.0.0"
 ST_TARBALL="st-${ST_VERSION}.tar.gz"
 ST_URL="https://dl.suckless.org/st/${ST_TARBALL}"
 SCROLLBACK_PATCH_URL="https://st.suckless.org/patches/scrollback/st-scrollback-0.9.2.diff"
@@ -17,6 +18,8 @@ BUILD_LOG="${BUILD_DIR}/build.log"
 FONT_SOURCE_DIR="${BEASTIE_ROOT}/fonts/iosevka"
 FONT_TARGET_DIR="${HOME}/.local/share/fonts/iosevka"
 FONT_FAMILY="Iosevka Term"
+ST_INSTALL_PREFIX="/usr/local"
+WRAPPER_PATH="${ST_INSTALL_PREFIX}/bin/beastie"
 
 logInfo() { printf '[info] %s\n' "$1" >&2; }
 logOk()   { printf '[ OK ] %s\n' "$1" >&2; }
@@ -71,6 +74,7 @@ installDependencies() {
                 unzip \
                 picom \
                 x11-xserver-utils \
+                ncurses-bin \
                 || failAndExit "apt install failed" "apt" \
                                 "check network connectivity and mirror availability"
             ;;
@@ -83,6 +87,7 @@ installDependencies() {
                 pkgconf-pkg-config \
                 picom \
                 xorg-x11-xrdb \
+                ncurses \
                 || failAndExit "dnf install failed" "dnf" \
                                 "check network and repository availability"
             ;;
@@ -93,6 +98,7 @@ installDependencies() {
                 fontconfig freetype2 pkgconf patch unzip \
                 picom \
                 xorg-xrdb \
+                ncurses \
                 || failAndExit "pacman install failed" "pacman" \
                                 "check network and mirror availability"
             ;;
@@ -103,6 +109,7 @@ installDependencies() {
                 fontconfig freetype2 pkgconf patch unzip \
                 picom \
                 xrdb \
+                ncurses \
                 || failAndExit "pkg install failed" "pkg" \
                                 "check network and repository availability"
             ;;
@@ -504,7 +511,7 @@ applyWindowTitle() {
         return 0
     fi
 
-    logWarn "window title anchor not found in x.c or st.c; default title remains 'st'. Run with '-t Beastie' or wait for Bloco 8 (beastie wrapper passes -t Beastie)."
+    logWarn "window title anchor not found in x.c or st.c; the beastie wrapper will pass '-t Beastie' as fallback"
 }
 
 applyConfigHeader() {
@@ -654,6 +661,110 @@ buildSource() {
     logOk "st ${ST_VERSION} built at ${stBinaryPath}"
 }
 
+installBinary() {
+    (
+        cd "$ST_SOURCE_DIR" || exit 1
+        "$BUILD_TOOL" install PREFIX="$ST_INSTALL_PREFIX" >/dev/null 2>&1 \
+            || failAndExit "make install failed" "$ST_SOURCE_DIR" \
+                            "check Makefile install target and PREFIX permissions"
+    )
+    installedStPath="${ST_INSTALL_PREFIX}/bin/st"
+    [ -x "$installedStPath" ] \
+        || failAndExit "st not installed at expected path" "$installedStPath" \
+                        "make install may not have honored PREFIX"
+    logOk "st binary installed at ${installedStPath}"
+}
+
+installTerminfo() {
+    stInfoPath="${ST_SOURCE_DIR}/st.info"
+    [ -f "$stInfoPath" ] \
+        || failAndExit "st.info missing in source tree" "$stInfoPath" \
+                        "upstream tarball layout changed"
+
+    beastieInfoPath="${BUILD_DIR}/beastie.info"
+    sed 's/^st-256color|/beastie-256color|/' "$stInfoPath" > "$beastieInfoPath" \
+        || failAndExit "sed st.info rename failed" "$stInfoPath" \
+                        "st.info layout changed"
+
+    grep -q '^beastie-256color|' "$beastieInfoPath" \
+        || failAndExit "beastie-256color terminfo entry not found after sed" \
+                        "$beastieInfoPath" \
+                        "st.info first line may not start with st-256color"
+
+    mkdir -p "$TERMINFO_DIR"
+    if command -v tic >/dev/null 2>&1; then
+        tic -x -o "$TERMINFO_DIR" "$beastieInfoPath" >/dev/null 2>&1 \
+            || failAndExit "tic failed" "$beastieInfoPath" \
+                            "check ncurses-bin installation and TERMINFO_DIR permissions"
+    else
+        failAndExit "tic not found" "PATH=$PATH" \
+                    "install ncurses-bin (Debian) or ncurses (others)"
+    fi
+
+    infocmp -A "$TERMINFO_DIR" beastie-256color >/dev/null 2>&1 \
+        || failAndExit "beastie-256color not registered in terminfo" \
+                        "$TERMINFO_DIR" \
+                        "tic may have written to a different TERMINFO dir; check $TERMINFO_DIR/b/beastie-256color"
+
+    logOk "beastie-256color terminfo installed under ${TERMINFO_DIR}"
+}
+
+installWrapper() {
+    wrapperDir=$(dirname "$WRAPPER_PATH")
+    [ -d "$wrapperDir" ] \
+        || mkdir -p "$wrapperDir" \
+        || failAndExit "cannot create wrapper directory" "$wrapperDir" \
+                        "check /usr/local/bin permissions"
+
+    cat > "$WRAPPER_PATH" <<WRAPPER_EOF
+#!/bin/sh
+if [ "\${1:-}" = "--version" ]; then
+    printf 'beastie ${BEASTIE_VERSION} (st ${ST_VERSION})\n'
+    exit 0
+fi
+if [ "\${1:-}" = "--selftest" ]; then
+    printf 'beastie selftest\n'
+    if command -v st >/dev/null 2>&1; then
+        printf '  st: OK (%s)\n' "\$(command -v st)"
+    else
+        printf '  st: FAIL (st not in PATH)\n'
+        exit 1
+    fi
+    if infocmp -A "\${TERMINFO:-\$HOME/.terminfo}" beastie-256color >/dev/null 2>&1; then
+        printf '  terminfo: OK\n'
+    else
+        printf '  terminfo: FAIL (beastie-256color not found)\n'
+        exit 1
+    fi
+    printf '  config.h: compiled into binary (not runtime verifiable)\n'
+    exit 0
+fi
+export TERM=beastie-256color
+exec ${ST_INSTALL_PREFIX}/bin/st \\
+  -f "Iosevka Term:size=13" \\
+  -g 100x30 \\
+  -t "Beastie" \\
+  "\$@"
+WRAPPER_EOF
+
+    chmod 0755 "$WRAPPER_PATH" \
+        || failAndExit "cannot set wrapper executable" "$WRAPPER_PATH" \
+                        "check file permissions"
+
+    [ -x "$WRAPPER_PATH" ] \
+        || failAndExit "wrapper not executable after chmod" "$WRAPPER_PATH" \
+                        "chmod may have failed silently"
+
+    versionOutput=$("$WRAPPER_PATH" --version 2>&1) \
+        || failAndExit "wrapper --version failed" "$WRAPPER_PATH" \
+                        "check wrapper script for syntax errors"
+    case "$versionOutput" in
+        beastie*) logOk "wrapper installed at ${WRAPPER_PATH} and reports: ${versionOutput}" ;;
+        *) failAndExit "wrapper --version returned unexpected output" "$versionOutput" \
+                       "check the wrapper script content" ;;
+    esac
+}
+
 installXresources() {
     xresourcesFile="${HOME}/.Xresources"
 
@@ -712,13 +823,13 @@ installXresources() {
 }
 
 reportNextSteps() {
-    stBinaryPath="${ST_SOURCE_DIR}/st"
-    logInfo "next step 1: run ${stBinaryPath} (no -e) for an interactive shell; the shell PS1 shows your cwd (e.g. root@minios:~/beastie#)"
-    logInfo "next step 2: if title shows 'st' instead of 'Beastie', run with '-t Beastie' or wait for Bloco 8 (beastie wrapper); the rest (dark bg, transparency, Iosevka) is already active"
-    logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st to apply (Xresources is read at startup, not on SIGUSR1)"
+    logInfo "next step 1: run beastie --version and beastie --selftest to verify the wrapper"
+    logInfo "next step 2: run beastie (no -e) for an interactive shell with prompt showing cwd"
+    logInfo "next step 3: confirm window title is 'Beastie', dark bg with transparency, orange cursor, Iosevka Term glyphs"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
-    logInfo "next step 5: Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH; Ctrl+Shift+N needs the beastie wrapper (Bloco 8)"
-    logInfo "next step 6: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
+    logInfo "next step 5: Ctrl+Shift+N spawns another beastie window; Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH"
+    logInfo "next step 6: within beastie, tmux/htop/vim now work because TERM=beastie-256color is registered"
+    logInfo "next step 7: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
 main() {
@@ -735,6 +846,9 @@ main() {
     applyWindowTitle
     applyConfigHeader
     buildSource
+    installBinary
+    installTerminfo
+    installWrapper
     installXresources
     reportNextSteps
     logOk "install.sh finished successfully"

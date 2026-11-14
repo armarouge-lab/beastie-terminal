@@ -75,6 +75,8 @@ testAssertContains "install.sh installs libxrender-dev for alpha" \
     'libxrender-dev' "$installContents"
 testAssertContains "install.sh installs xrdb dependency" \
     'x11-xserver-utils' "$installContents"
+testAssertContains "install.sh installs ncurses for tic" \
+    'ncurses-bin' "$installContents"
 testAssertNotContains "install.sh no longer installs tmux (tabs feature removed)" \
     'tmux' "$installContents"
 testAssertContains "install.sh defines installFonts" \
@@ -174,10 +176,49 @@ testAssertContains "install.sh warns if title anchor not found" \
     'window title anchor not found' "$installContents"
 testAssertNotContains "install.sh does not abort build on title anchor miss" \
     'failAndExit "default title anchor' "$installContents"
+testAssertContains "install.sh defines installBinary" \
+    'installBinary()' "$installContents"
+testAssertContains "install.sh invokes installBinary before installTerminfo" \
+    'installBinary
+    installTerminfo' "$installContents"
+testAssertContains "install.sh runs make install with PREFIX" \
+    '"$BUILD_TOOL" install PREFIX="$ST_INSTALL_PREFIX"' "$installContents"
+testAssertContains "install.sh guards on installed st binary" \
+    'st not installed at expected path' "$installContents"
+testAssertContains "install.sh defines installTerminfo" \
+    'installTerminfo()' "$installContents"
+testAssertContains "install.sh invokes installTerminfo before installWrapper" \
+    'installTerminfo
+    installWrapper' "$installContents"
+testAssertContains "install.sh renames st-256color to beastie-256color in st.info" \
+    "sed 's/^st-256color|/beastie-256color|/'" "$installContents"
+testAssertContains "install.sh runs tic -x -o TERMINFO_DIR" \
+    'tic -x -o "$TERMINFO_DIR"' "$installContents"
+testAssertContains "install.sh guards on terminfo registration via infocmp" \
+    'infocmp -A "$TERMINFO_DIR" beastie-256color' "$installContents"
+testAssertContains "install.sh defines installWrapper" \
+    'installWrapper()' "$installContents"
+testAssertContains "install.sh invokes installWrapper before installXresources" \
+    'installWrapper
+    installXresources' "$installContents"
+testAssertContains "install.sh writes wrapper with TERM=beastie-256color" \
+    'export TERM=beastie-256color' "$installContents"
+testAssertContains "install.sh writes wrapper with -t Beastie" \
+    '-t "Beastie"' "$installContents"
+testAssertContains "install.sh writes wrapper with -f Iosevka" \
+    '-f "Iosevka Term:size=13"' "$installContents"
+testAssertContains "install.sh writes wrapper with -g 100x30" \
+    '-g 100x30' "$installContents"
+testAssertContains "install.sh writes wrapper with --version handler" \
+    '= "--version"' "$installContents"
+testAssertContains "install.sh writes wrapper with --selftest handler" \
+    '= "--selftest"' "$installContents"
+testAssertContains "install.sh guards on wrapper --version output" \
+    'wrapper --version returned unexpected output' "$installContents"
 testAssertContains "install.sh defines installXresources" \
     'installXresources()' "$installContents"
-testAssertContains "install.sh runs installXresources after buildSource" \
-    'buildSource
+testAssertContains "install.sh runs installXresources after installWrapper" \
+    'installWrapper
     installXresources' "$installContents"
 testAssertContains "install.sh ensures trailing newline in Xresources" \
     'tail -c 1 "$xresourcesFile"' "$installContents"
