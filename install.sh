@@ -4,7 +4,7 @@ set -eu
 BEASTIE_ROOT=$(cd "$(dirname "$0")" && pwd)
 BUILD_DIR="${BEASTIE_ROOT}/.build"
 ST_VERSION="0.9.3"
-BEASTIE_VERSION="1.0.0"
+BEASTIE_VERSION="0.9.0"
 ST_TARBALL="st-${ST_VERSION}.tar.gz"
 ST_URL="https://dl.suckless.org/st/${ST_TARBALL}"
 SCROLLBACK_PATCH_URL="https://st.suckless.org/patches/scrollback/st-scrollback-0.9.2.diff"

@@ -1,6 +1,6 @@
 # BEASTIE
 
-**Technical Documentation - V1.0.0**
+**Technical Documentation - V0.9.0**
 
 Terminal emulator for RedhotBSD (FreeBSD) and Linux, built on suckless `st 0.9.3`
 
@@ -349,4 +349,4 @@ Beastie is, in the end, a configuration package over `st`: a generated `config.h
 
 ---
 
-**End of document, V1.0.0**
+**End of document, V0.9.0**
