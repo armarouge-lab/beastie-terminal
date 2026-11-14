@@ -139,9 +139,9 @@ testAssertContains "install.sh guards on xresources background mapping to colorn
     "$installContents"
 testAssertContains "install.sh defines applySpawnFunction" \
     'applySpawnFunction()' "$installContents"
-testAssertContains "install.sh invokes applySpawnFunction before applyWindowTitle" \
+testAssertContains "install.sh invokes applySpawnFunction before applyQuitFunction" \
     'applySpawnFunction
-    applyWindowTitle' "$installContents"
+    applyQuitFunction' "$installContents"
 testAssertContains "install.sh anchors spawn injection on ttynew" \
     'ttynew anchor not found in st.c' "$installContents"
 testAssertContains "install.sh uses lookahead line-array for spawn injection" \
@@ -163,6 +163,19 @@ testAssertContains "install.sh guards on Arg union anchor in st.h" \
     'Arg union anchor not found in st.h' "$installContents"
 testAssertContains "install.sh guards on spawn prototype in st.h after injection" \
     'spawn prototype not present after injection' "$installContents"
+testAssertContains "install.sh defines applyQuitFunction" \
+    'applyQuitFunction()' "$installContents"
+testAssertContains "install.sh injects exit(0) quit function" \
+    'exit(0);' "$installContents"
+testAssertContains "install.sh guards on quit function after injection" \
+    'quit function not present after injection' "$installContents"
+testAssertContains "install.sh guards on exit in quit function" \
+    'exit call missing in quit function' "$installContents"
+testAssertContains "install.sh injects quit prototype into st.h" \
+    'quit prototype injected into st.h' "$installContents"
+testAssertContains "install.sh invokes applyQuitFunction before applyWindowTitle" \
+    'applyQuitFunction
+    applyWindowTitle' "$installContents"
 testAssertContains "install.sh defines applyWindowTitle" \
     'applyWindowTitle()' "$installContents"
 testAssertContains "install.sh invokes applyWindowTitle before applyConfigHeader" \
@@ -294,6 +307,8 @@ testAssertContains "install.sh injects Ctrl+Shift+D spawn devil" \
     'XK_D, spawn, {.v = (char \*\[\]){ "devil", ".", NULL } }' "$installContents"
 testAssertContains "install.sh injects Ctrl+Shift+F spawn nid" \
     'XK_F, spawn, {.v = (char \*\[\]){ "nid", ".", NULL } }' "$installContents"
+testAssertContains "install.sh injects Ctrl+Shift+Q quit" \
+    'XK_Q, quit, {.i = 0} }' "$installContents"
 testAssertContains "install.sh guards on Redhot cursor color" \
     'grep -q '"'"'"#ff6600"'"'"'' "$installContents"
 testAssertContains "install.sh guards on resources after apply" \
@@ -313,6 +328,9 @@ testAssertContains "install.sh guards on Ctrl+Shift+N spawn after apply" \
     "$installContents"
 testAssertNotContains "install.sh no longer guards on Ctrl+Shift+T spawn after apply" \
     'grep -q '"'"'XK_T, spawn' "$installContents"
+testAssertContains "install.sh guards on Ctrl+Shift+Q quit after apply" \
+    'grep -q '"'"'XK_Q, quit, {.i = 0} }'"'"' "$targetConfig"' \
+    "$installContents"
 testAssertContains "install.sh keeps patch tool available" \
     'patch \' "$installContents"
 

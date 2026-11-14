@@ -124,6 +124,9 @@ Scroll back through the 5,000 line history.
 .TP
 .B Shift+PgDn
 Scroll forward.
+.TP
+.B Ctrl+Shift+Q
+Quit. Closes the terminal and exits with status 0.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -148,9 +151,6 @@ or because the terminfo entry is missing.
 .BR xrdb (1),
 .BR X (7)
 .SH BUGS
-.B Ctrl+Shift+Q
-is not implemented in V1.0. Use the window manager close action instead.
-.PP
 The
 .B alpha
 patch requires a running compositor. Without one the background is opaque,

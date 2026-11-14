@@ -487,6 +487,96 @@ applySpawnFunction() {
     fi
 }
 
+applyQuitFunction() {
+    if grep -q '^quit(const Arg \*arg)' "${ST_SOURCE_DIR}/st.c" 2>/dev/null; then
+        logInfo "quit function already present in st.c, skipping injection"
+    else
+        grep -q '^ttynew(' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "ttynew anchor not found in st.c" "${ST_SOURCE_DIR}/st.c" \
+                            "upstream st.c layout changed"
+
+        awk '
+        BEGIN { total = 0; injected = 0 }
+        { lines[total++] = $0 }
+        END {
+            for (i = 0; i < total; i++) {
+                if (!injected && i + 1 < total \
+                    && lines[i] ~ /^(void|int)[[:space:]]*$/ \
+                    && lines[i+1] ~ /^ttynew\(/) {
+                    print "void"
+                    print "quit(const Arg *arg)"
+                    print "{"
+                    print "\texit(0);"
+                    print "}"
+                    print ""
+                    print lines[i]
+                    injected = 1
+                    continue
+                }
+                print lines[i]
+            }
+            if (!injected) {
+                exit 1
+            }
+        }
+        ' "${ST_SOURCE_DIR}/st.c" > "${ST_SOURCE_DIR}/st.c.tmp" \
+            || failAndExit "awk quit injection failed" "${ST_SOURCE_DIR}/st.c" \
+                            "st.c layout changed, ttynew is not preceded by int or void"
+
+        if [ ! -s "${ST_SOURCE_DIR}/st.c.tmp" ]; then
+            rm -f "${ST_SOURCE_DIR}/st.c.tmp"
+            failAndExit "awk produced empty output for quit" "${ST_SOURCE_DIR}/st.c" \
+                        "check st.c integrity"
+        fi
+
+        mv "${ST_SOURCE_DIR}/st.c.tmp" "${ST_SOURCE_DIR}/st.c"
+
+        grep -q '^quit(const Arg \*arg)' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "quit function not present after injection" \
+                            "${ST_SOURCE_DIR}/st.c" \
+                            "awk injection failed"
+
+        grep -q 'exit(0);' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "exit call missing in quit function" \
+                            "${ST_SOURCE_DIR}/st.c" \
+                            "awk injection incomplete"
+
+        logOk "quit function injected into st.c, exit(0) on Ctrl+Shift+Q"
+    fi
+
+    if grep -q '^void quit(const Arg \*);' "${ST_SOURCE_DIR}/st.h" 2>/dev/null; then
+        logInfo "quit prototype already present in st.h, skipping injection"
+    else
+        grep -q '^void spawn(const Arg \*);' "${ST_SOURCE_DIR}/st.h" \
+            || failAndExit "spawn prototype anchor not found in st.h" "${ST_SOURCE_DIR}/st.h" \
+                            "applySpawnFunction must run before applyQuitFunction"
+
+        awk '
+        BEGIN { injected = 0 }
+        /^void spawn\(const Arg \*\);$/ && !injected {
+            print
+            print ""
+            print "void quit(const Arg *);"
+            injected = 1
+            next
+        }
+        { print }
+        END { if (!injected) exit 1 }
+        ' "${ST_SOURCE_DIR}/st.h" > "${ST_SOURCE_DIR}/st.h.tmp" \
+            || failAndExit "awk quit prototype injection failed" "${ST_SOURCE_DIR}/st.h" \
+                            "st.h layout changed"
+
+        mv "${ST_SOURCE_DIR}/st.h.tmp" "${ST_SOURCE_DIR}/st.h"
+
+        grep -q '^void quit(const Arg \*);' "${ST_SOURCE_DIR}/st.h" \
+            || failAndExit "quit prototype not present after injection" \
+                            "${ST_SOURCE_DIR}/st.h" \
+                            "awk injection failed"
+
+        logOk "quit prototype injected into st.h"
+    fi
+}
+
 applyWindowTitle() {
     if grep -q 'Beastie' "${ST_SOURCE_DIR}/x.c" 2>/dev/null && \
        grep -qE 'opt_title[[:space:]]*\?[[:space:]]*opt_title[[:space:]]*:[[:space:]]*"Beastie"' "${ST_SOURCE_DIR}/x.c" 2>/dev/null; then
@@ -587,12 +677,13 @@ applyConfigHeader() {
         print "\t{ ControlMask|ShiftMask, XK_N, spawn, {.v = (char *[]){ \"beastie\", NULL } } },"
         print "\t{ ControlMask|ShiftMask, XK_D, spawn, {.v = (char *[]){ \"devil\", \".\", NULL } } },"
         print "\t{ ControlMask|ShiftMask, XK_F, spawn, {.v = (char *[]){ \"nid\", \".\", NULL } } },"
+        print "\t{ ControlMask|ShiftMask, XK_Q, quit, {.i = 0} },"
         injected = 1
         next
     }
     { print }
     ' "$targetConfig" > "$targetConfig.tmp" \
-        || failAndExit "awk spawn keybindings injection failed" "$targetConfig" \
+        || failAndExit "awk spawn and quit keybindings injection failed" "$targetConfig" \
                         "config.h layout changed"
     mv "$targetConfig.tmp" "$targetConfig"
 
@@ -632,8 +723,11 @@ applyConfigHeader() {
     grep -q 'XK_F, spawn, {.v = (char \*\[\]){ "nid", ".", NULL } }' "$targetConfig" \
         || failAndExit "Ctrl+Shift+F spawn keybinding missing from config.h" "$targetConfig" \
                         "awk spawn keybindings injection failed"
+    grep -q 'XK_Q, quit, {.i = 0} }' "$targetConfig" \
+        || failAndExit "Ctrl+Shift+Q quit keybinding missing from config.h" "$targetConfig" \
+                        "awk quit keybinding injection failed"
 
-    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C and V, alpha 0.95, xresources, aligned defaultXX, spawn keybindings"
+    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C and V, alpha 0.95, xresources, aligned defaultXX, spawn and quit keybindings"
 }
 
 buildSource() {
@@ -863,10 +957,11 @@ reportNextSteps() {
     logInfo "next step 1: run beastie --version and beastie --selftest to verify the wrapper"
     logInfo "next step 2: run man beastie to read the installed man page"
     logInfo "next step 3: run beastie (no -e) for an interactive shell with prompt showing cwd"
-    logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
-    logInfo "next step 5: Ctrl+Shift+N spawns another beastie window, Ctrl+Shift+D and F need devil and nid on PATH"
-    logInfo "next step 6: change st.background in Xresources, run xrdb merge and restart st to apply"
-    logInfo "next step 7: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
+    logInfo "next step 4: press Ctrl+Shift+Q inside beastie to quit cleanly"
+    logInfo "next step 5: run seq 1 200 and press Shift+PgUp to scroll back"
+    logInfo "next step 6: Ctrl+Shift+N spawns another beastie window, Ctrl+Shift+D and F need devil and nid on PATH"
+    logInfo "next step 7: change st.background in Xresources, run xrdb merge and restart st to apply"
+    logInfo "next step 8: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
 main() {
@@ -880,6 +975,7 @@ main() {
     applyAlphaPatch
     applyXresourcesPatch
     applySpawnFunction
+    applyQuitFunction
     applyWindowTitle
     applyConfigHeader
     buildSource
