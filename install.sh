@@ -20,11 +20,12 @@ FONT_TARGET_DIR="${HOME}/.local/share/fonts/iosevka"
 FONT_FAMILY="Iosevka Term"
 ST_INSTALL_PREFIX="/usr/local"
 WRAPPER_PATH="${ST_INSTALL_PREFIX}/bin/beastie"
+MANPAGE_SOURCE="${BEASTIE_ROOT}/beastie.1"
 
 logInfo() { printf '[info] %s\n' "$1" >&2; }
 logOk()   { printf '[ OK ] %s\n' "$1" >&2; }
 logWarn() { printf '[warn] %s\n' "$1" >&2; }
-logFail() { printf '[FAIL] %s at %s — %s\n' "$1" "$2" "$3" >&2; }
+logFail() { printf '[FAIL] %s at %s, %s\n' "$1" "$2" "$3" >&2; }
 
 failAndExit() { logFail "$1" "$2" "$3"; exit 1; }
 
@@ -59,7 +60,7 @@ installDependencies() {
         apt)
             logInfo "installing dependencies via apt"
             if ! apt update; then
-                logWarn "apt update reported errors (often a broken third-party repository); continuing to install"
+                logWarn "apt update reported errors, often a broken third-party repository; continuing to install"
             fi
             DEBIAN_FRONTEND=noninteractive apt install -y \
                 build-essential \
@@ -141,7 +142,7 @@ installFonts() {
     fi
     if ! fc-list : family 2>/dev/null | grep -qi "$FONT_FAMILY"; then
         failAndExit "fontconfig cannot see the installed font" "$FONT_TARGET_DIR" \
-                    "run fc-list | grep -i 'Iosevka' and check the family name"
+                    "run fc-list | grep -i Iosevka and check the family name"
     fi
     logOk "Iosevka Term installed under ${FONT_TARGET_DIR} and cached by fontconfig"
 }
@@ -198,7 +199,7 @@ applyScrollbackPatch() {
         cd "$ST_SOURCE_DIR" || exit 1
         patch -p1 --forward < "$SCROLLBACK_PATCH_FILE" \
             || failAndExit "scrollback patch application failed" "$ST_SOURCE_DIR" \
-                            "patch may not match st 0.9.3; check ${SCROLLBACK_PATCH_FILE}"
+                            "patch may not match st 0.9.3, check ${SCROLLBACK_PATCH_FILE}"
     )
     logOk "scrollback patch applied"
 
@@ -216,7 +217,7 @@ applyScrollbackPatch() {
         || failAndExit "HISTSIZE not set to 5000 in st.c" "${ST_SOURCE_DIR}/st.c" \
                         "sed replacement failed"
 
-    logOk "scrollback set to 5000 lines (HISTSIZE in st.c)"
+    logOk "scrollback set to 5000 lines, HISTSIZE in st.c"
 }
 
 patchConfigMk() {
@@ -226,7 +227,7 @@ patchConfigMk() {
                         "upstream tarball layout changed"
     case "$OS" in
         Linux)
-            logInfo "config.mk: Linux uses upstream defaults (no patch needed)"
+            logInfo "config.mk: Linux uses upstream defaults, no patch needed"
             ;;
         FreeBSD)
             logInfo "config.mk: applying FreeBSD paths and removing -lrt"
@@ -246,7 +247,7 @@ patchConfigMk() {
 
 applyAlphaPatch() {
     if grep -q '^float alpha = ' "${ST_SOURCE_DIR}/config.def.h" 2>/dev/null; then
-        logInfo "alpha support already present; skipping patch"
+        logInfo "alpha support already present, skipping patch"
     else
         logInfo "downloading alpha patch from ${ALPHA_PATCH_URL}"
         if [ -f "$ALPHA_PATCH_FILE" ]; then
@@ -272,7 +273,7 @@ applyAlphaPatch() {
 
         if [ -f "${ST_SOURCE_DIR}/x.c.rej" ]; then
             if grep -q '@@.*xinit(int cols, int rows)' "${ST_SOURCE_DIR}/x.c.rej"; then
-                logWarn "alpha patch hunk for xinit() was rejected (known st 0.9.3 incompatibility); applying manual fallback"
+                logWarn "alpha patch hunk for xinit was rejected, known st 0.9.3 incompatibility, applying manual fallback"
                 rm -f "${ST_SOURCE_DIR}/x.c.rej"
                 sed -i.bak2 \
                     -e 's/XDefaultDepth(xw\.dpy, xw\.scr)/xw.depth/g' \
@@ -285,11 +286,11 @@ applyAlphaPatch() {
                                 "${ST_SOURCE_DIR}/x.c" \
                                 "sed replacement incomplete"
                 fi
-                logOk "alpha hunk 7 manually applied (xw.depth for window and pixmap)"
+                logOk "alpha hunk 7 manually applied, xw.depth for window and pixmap"
             else
                 failAndExit "alpha patch rejected an unknown hunk" \
                             "${ST_SOURCE_DIR}/x.c.rej" \
-                            "patch is incompatible with st 0.9.3; inspect the .rej file"
+                            "patch is incompatible with st 0.9.3, inspect the rej file"
             fi
         fi
         logOk "alpha patch applied"
@@ -320,12 +321,12 @@ applyAlphaPatch() {
                         "${ST_SOURCE_DIR}/config.mk" \
                         "sed injection failed"
 
-    logOk "alpha = 0.95 set in config.def.h and -lXrender added to config.mk"
+    logOk "alpha set to 0.95 in config.def.h and -lXrender added to config.mk"
 }
 
 applyXresourcesPatch() {
     if grep -q 'resources\[\]' "${ST_SOURCE_DIR}/config.def.h" 2>/dev/null; then
-        logInfo "xresources support already present; skipping patch"
+        logInfo "xresources support already present, skipping patch"
     else
         logInfo "downloading xresources patch from ${XRESOURCES_PATCH_URL}"
         if [ -f "$XRESOURCES_PATCH_FILE" ]; then
@@ -353,16 +354,16 @@ applyXresourcesPatch() {
         if [ -f "${ST_SOURCE_DIR}/x.c.rej" ] || [ -f "${ST_SOURCE_DIR}/config.def.h.rej" ]; then
             mkdir -p "$rejDir"
             cp "${ST_SOURCE_DIR}"/*.rej "$rejDir/" 2>/dev/null || true
-            logWarn "xresources patch had rejections; copies saved to ${rejDir}"
+            logWarn "xresources patch had rejections, copies saved to ${rejDir}"
             failAndExit "xresources patch rejected one or more hunks" \
                         "${rejDir}" \
-                        "inspect the .rej files and report to get a manual fallback"
+                        "inspect the rej files and report to get a manual fallback"
         fi
         logOk "xresources patch applied"
     fi
 
     grep -q 'resources\[\]' "${ST_SOURCE_DIR}/config.def.h" \
-        || failAndExit "resources[] not found in config.def.h" \
+        || failAndExit "resources not found in config.def.h" \
                         "${ST_SOURCE_DIR}/config.def.h" \
                         "patch may have failed"
 
@@ -372,16 +373,16 @@ applyXresourcesPatch() {
                         "patch may not have applied to x.c"
 
     grep -q '{ "background",.*colorname\[256\]' "${ST_SOURCE_DIR}/config.def.h" \
-        || failAndExit "xresources patch no longer maps background to colorname[256]" \
+        || failAndExit "xresources patch no longer maps background to colorname 256" \
                         "${ST_SOURCE_DIR}/config.def.h" \
-                        "patch version changed; verify resources[] indices before updating defaults"
+                        "patch version changed, verify resources indices before updating defaults"
 
     logOk "xresources wired into config.def.h and x.c"
 }
 
 applySpawnFunction() {
     if grep -q '^spawn(const Arg \*arg)' "${ST_SOURCE_DIR}/st.c" 2>/dev/null; then
-        logInfo "spawn function already present in st.c; skipping injection"
+        logInfo "spawn function already present in st.c, skipping injection"
     else
         grep -q '^ttynew(' "${ST_SOURCE_DIR}/st.c" \
             || failAndExit "ttynew anchor not found in st.c" "${ST_SOURCE_DIR}/st.c" \
@@ -417,7 +418,7 @@ applySpawnFunction() {
         }
         ' "${ST_SOURCE_DIR}/st.c" > "${ST_SOURCE_DIR}/st.c.tmp" \
             || failAndExit "awk spawn injection failed" "${ST_SOURCE_DIR}/st.c" \
-                            "st.c layout changed (ttynew is not preceded by int or void)"
+                            "st.c layout changed, ttynew is not preceded by int or void"
 
         if [ ! -s "${ST_SOURCE_DIR}/st.c.tmp" ]; then
             rm -f "${ST_SOURCE_DIR}/st.c.tmp"
@@ -444,17 +445,17 @@ applySpawnFunction() {
 
         prefixBeforeTtynew=$(grep -B1 '^ttynew(' "${ST_SOURCE_DIR}/st.c" | head -1 | tr -d '[:space:]')
         case "$prefixBeforeTtynew" in
-            int|void) logOk "original ttynew return type '${prefixBeforeTtynew}' preserved" ;;
+            int|void) logOk "original ttynew return type ${prefixBeforeTtynew} preserved" ;;
             *) failAndExit "unexpected prefix before ttynew after injection" \
                            "$prefixBeforeTtynew" \
                            "awk injection corrupted the return type" ;;
         esac
 
-        logOk "spawn function injected into st.c (setsid + fork + execvp on Arg.v)"
+        logOk "spawn function injected into st.c, setsid plus fork plus execvp on Arg.v"
     fi
 
     if grep -q '^void spawn(const Arg \*);' "${ST_SOURCE_DIR}/st.h" 2>/dev/null; then
-        logInfo "spawn prototype already present in st.h; skipping injection"
+        logInfo "spawn prototype already present in st.h, skipping injection"
     else
         grep -q '^} Arg;' "${ST_SOURCE_DIR}/st.h" \
             || failAndExit "Arg union anchor not found in st.h" "${ST_SOURCE_DIR}/st.h" \
@@ -482,14 +483,14 @@ applySpawnFunction() {
                             "${ST_SOURCE_DIR}/st.h" \
                             "awk injection failed"
 
-        logOk "spawn prototype injected into st.h (visible to x.c and st.c)"
+        logOk "spawn prototype injected into st.h, visible to x.c and st.c"
     fi
 }
 
 applyWindowTitle() {
     if grep -q 'Beastie' "${ST_SOURCE_DIR}/x.c" 2>/dev/null && \
        grep -qE 'opt_title[[:space:]]*\?[[:space:]]*opt_title[[:space:]]*:[[:space:]]*"Beastie"' "${ST_SOURCE_DIR}/x.c" 2>/dev/null; then
-        logInfo "window title already set to Beastie in x.c; skipping"
+        logInfo "window title already set to Beastie in x.c, skipping"
         return 0
     fi
 
@@ -498,7 +499,7 @@ applyWindowTitle() {
             "${ST_SOURCE_DIR}/x.c" \
             || failAndExit "sed window title replacement failed" "${ST_SOURCE_DIR}/x.c" \
                             "x.c layout changed"
-        logOk "window title defaulted to Beastie (x.c opt_title ternary)"
+        logOk "window title defaulted to Beastie in x.c opt_title ternary"
         return 0
     fi
 
@@ -507,11 +508,11 @@ applyWindowTitle() {
             "${ST_SOURCE_DIR}/st.c" \
             || failAndExit "sed opt_title default failed" "${ST_SOURCE_DIR}/st.c" \
                             "st.c layout changed"
-        logOk "window title defaulted to Beastie (st.c opt_title default)"
+        logOk "window title defaulted to Beastie in st.c opt_title default"
         return 0
     fi
 
-    logWarn "window title anchor not found in x.c or st.c; the beastie wrapper will pass '-t Beastie' as fallback"
+    logWarn "window title anchor not found in x.c or st.c, the beastie wrapper will pass -t Beastie as fallback"
 }
 
 applyConfigHeader() {
@@ -608,10 +609,10 @@ applyConfigHeader() {
         || failAndExit "Ctrl+Shift+V keybinding missing from config.h" "$targetConfig" \
                         "sed mask replacement failed"
     grep -q '^float alpha = 0.95;' "$targetConfig" \
-        || failAndExit "alpha = 0.95 missing from config.h" "$targetConfig" \
+        || failAndExit "alpha 0.95 missing from config.h" "$targetConfig" \
                         "alpha field may have been clobbered"
     grep -q 'resources\[\]' "$targetConfig" \
-        || failAndExit "resources[] missing from config.h" "$targetConfig" \
+        || failAndExit "resources missing from config.h" "$targetConfig" \
                         "xresources array may have been clobbered by awk"
     grep -q 'unsigned int defaultbg = 256;' "$targetConfig" \
         || failAndExit "defaultbg not aligned to 256 in config.h" "$targetConfig" \
@@ -632,7 +633,7 @@ applyConfigHeader() {
         || failAndExit "Ctrl+Shift+F spawn keybinding missing from config.h" "$targetConfig" \
                         "awk spawn keybindings injection failed"
 
-    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, alpha 0.95, xresources, aligned defaultXX, spawn keybindings"
+    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C and V, alpha 0.95, xresources, aligned defaultXX, spawn keybindings"
 }
 
 buildSource() {
@@ -654,9 +655,9 @@ buildSource() {
         warningCount=$(grep -ci 'warning:' "$BUILD_LOG" || printf '0')
     fi
     if [ "$warningCount" -gt 0 ]; then
-        logWarn "${warningCount} warning(s) in build log (upstream st, not our code)"
+        logWarn "${warningCount} warnings in build log, upstream st, not our code"
     else
-        logOk "build clean (0 warnings)"
+        logOk "build clean, 0 warnings"
     fi
     logOk "st ${ST_VERSION} built at ${stBinaryPath}"
 }
@@ -698,13 +699,13 @@ installTerminfo() {
                             "check ncurses-bin installation and TERMINFO_DIR permissions"
     else
         failAndExit "tic not found" "PATH=$PATH" \
-                    "install ncurses-bin (Debian) or ncurses (others)"
+                    "install ncurses-bin on Debian or ncurses elsewhere"
     fi
 
     infocmp -A "$TERMINFO_DIR" beastie-256color >/dev/null 2>&1 \
         || failAndExit "beastie-256color not registered in terminfo" \
                         "$TERMINFO_DIR" \
-                        "tic may have written to a different TERMINFO dir; check $TERMINFO_DIR/b/beastie-256color"
+                        "tic may have written to a different TERMINFO dir, check the beastie-256color file"
 
     logOk "beastie-256color terminfo installed under ${TERMINFO_DIR}"
 }
@@ -765,6 +766,42 @@ WRAPPER_EOF
     esac
 }
 
+installManpage() {
+    case "$OS" in
+        Linux) manDir="/usr/local/share/man/man1" ;;
+        FreeBSD) manDir="/usr/local/man/man1" ;;
+        *) failAndExit "unknown OS for man directory" "$OS" \
+                       "detect-os.sh should have caught this" ;;
+    esac
+
+    [ -f "$MANPAGE_SOURCE" ] \
+        || failAndExit "beastie.1 not found in repository root" "$MANPAGE_SOURCE" \
+                        "the man page must ship as beastie.1 in the repo"
+
+    mkdir -p "$manDir" \
+        || failAndExit "cannot create man directory" "$manDir" \
+                        "check /usr/local permissions"
+
+    targetMan="${manDir}/beastie.1"
+    cp "$MANPAGE_SOURCE" "$targetMan" \
+        || failAndExit "cannot install man page" "$MANPAGE_SOURCE" \
+                        "check directory permissions"
+
+    chmod 0644 "$targetMan" \
+        || failAndExit "cannot set man page permissions" "$targetMan" \
+                        "check file permissions"
+
+    [ -f "$targetMan" ] \
+        || failAndExit "man page missing after install" "$targetMan" \
+                        "cp may have failed silently"
+
+    if command -v mandb >/dev/null 2>&1; then
+        mandb -q >/dev/null 2>&1 || logWarn "mandb failed, man beastie may not find the page until mandb runs"
+    fi
+
+    logOk "beastie.1 installed at ${targetMan}"
+}
+
 installXresources() {
     xresourcesFile="${HOME}/.Xresources"
 
@@ -789,7 +826,7 @@ installXresources() {
         mv "$tmpFile" "$xresourcesFile" \
             || failAndExit "cannot replace Xresources" "$xresourcesFile" \
                             "check directory permissions"
-        logInfo "removed previous st.* properties from ${xresourcesFile}"
+        logInfo "removed previous st properties from ${xresourcesFile}"
     fi
 
     for propertyLine in \
@@ -801,10 +838,10 @@ installXresources() {
             || failAndExit "cannot append to Xresources" "$xresourcesFile" \
                             "check file permissions"
     done
-    logOk "wrote 4 st.* properties to ${xresourcesFile}"
+    logOk "wrote 4 st properties to ${xresourcesFile}"
 
     if ! command -v xrdb >/dev/null 2>&1; then
-        logWarn "xrdb not found; skipping merge (Xsession will load ~/.Xresources on next login)"
+        logWarn "xrdb not found, skipping merge, Xsession will load Xresources on next login"
         return 0
     fi
 
@@ -819,16 +856,16 @@ installXresources() {
                     "xrdb loaded: [${xrdbDebug}]"
     fi
 
-    logOk "~/.Xresources merged into running X server (st.* active)"
+    logOk "Xresources merged into running X server, st properties active"
 }
 
 reportNextSteps() {
     logInfo "next step 1: run beastie --version and beastie --selftest to verify the wrapper"
-    logInfo "next step 2: run beastie (no -e) for an interactive shell with prompt showing cwd"
-    logInfo "next step 3: run 'xrdb -merge ~/.Xresources' then restart st to apply; confirm window title is 'Beastie', dark bg with transparency, orange cursor, Iosevka Term glyphs"
+    logInfo "next step 2: run man beastie to read the installed man page"
+    logInfo "next step 3: run beastie (no -e) for an interactive shell with prompt showing cwd"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
-    logInfo "next step 5: Ctrl+Shift+N spawns another beastie window; Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH"
-    logInfo "next step 6: within beastie, htop/vim/mc now work because TERM=beastie-256color is registered"
+    logInfo "next step 5: Ctrl+Shift+N spawns another beastie window, Ctrl+Shift+D and F need devil and nid on PATH"
+    logInfo "next step 6: change st.background in Xresources, run xrdb merge and restart st to apply"
     logInfo "next step 7: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
@@ -849,6 +886,7 @@ main() {
     installBinary
     installTerminfo
     installWrapper
+    installManpage
     installXresources
     reportNextSteps
     logOk "install.sh finished successfully"

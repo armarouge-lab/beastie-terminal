@@ -1,0 +1,164 @@
+.TH BEASTIE 1 "2026-11-14" "Beastie 1.0.0" "User Commands"
+.SH NAME
+beastie \- RedhotBSD terminal emulator
+.SH SYNOPSIS
+.B beastie
+.RB [ \-\-version ]
+.RB [ \-\-selftest ]
+.RI [ st-options ]
+.SH DESCRIPTION
+.B beastie
+is a wrapper around
+.BR st (1),
+the suckless terminal emulator.
+.PP
+On launch, the wrapper exports
+.BR TERM=beastie-256color ,
+sets a default font of
+.BR "Iosevka Term:size=13" ,
+a default geometry of
+.BR 100x30 ,
+and a window title of
+.BR Beastie .
+Any remaining arguments are passed to
+.BR st ,
+so the flags documented in
+.BR st (1)
+work unchanged, and an explicit
+.B \-t
+overrides the default title.
+.SH OPTIONS
+.TP
+.B \-\-version
+Print the Beastie version and exit. The output is
+.BR "beastie 1.0.0 (st 0.9.3)" .
+.TP
+.B \-\-selftest
+Check that
+.B st
+is in
+.BR PATH
+and that the
+.B beastie-256color
+terminfo entry is registered. Exit code is 0 on success and 1 on failure.
+.SH ENVIRONMENT
+.TP
+.B TERM
+Set to
+.B beastie-256color
+by the wrapper. The entry must exist in the terminfo database, which the
+installer places at
+.B $HOME/.terminfo
+on Linux and
+.B /usr/local/share/misc
+on FreeBSD.
+.TP
+.B DISPLAY
+The X11 display to connect to. Required.
+.TP
+.B TERMINFO
+Optional. If set, overrides the default terminfo search path.
+.SH FILES
+.TP
+.B $HOME/.Xresources
+Holds the four
+.B st
+properties the installer manages:
+.BR st.background ,
+.BR st.foreground ,
+.BR st.cursorColor ,
+and
+.BR st.font .
+Edit the file, run
+.BR "xrdb -merge ~/.Xresources" ,
+and restart
+.B beastie
+to apply.
+.TP
+.B /usr/local/bin/beastie
+The wrapper script.
+.TP
+.B /usr/local/bin/st
+The compiled terminal binary.
+.TP
+.B $HOME/.terminfo/b/beastie-256color
+The terminfo entry on Linux.
+.TP
+.B /usr/local/share/misc/terminfo.db
+The terminfo entry on FreeBSD.
+.SH KEYBINDINGS
+.TP
+.B Ctrl+Shift+C
+Copy the current selection to the X11
+.B CLIPBOARD
+selection.
+.TP
+.B Ctrl+Shift+V
+Paste from the X11
+.B CLIPBOARD
+selection.
+.TP
+.B Ctrl+Shift+N
+Open a new
+.B beastie
+window.
+.TP
+.B Ctrl+Shift+D
+Run
+.B "devil ."
+in the current directory. Requires
+.B devil
+in
+.BR PATH .
+.TP
+.B Ctrl+Shift+F
+Run
+.B "nid ."
+in the current directory. Requires
+.B nid
+in
+.BR PATH .
+.TP
+.B Shift+PgUp
+Scroll back through the 5,000 line history.
+.TP
+.B Shift+PgDn
+Scroll forward.
+.SH EXIT STATUS
+.TP
+.B 0
+Success. Applies only to
+.B \-\-version
+and
+.BR \-\-selftest .
+A normal launch inherits
+.BR st 's
+exit status.
+.TP
+.B 1
+Failure in
+.BR \-\-selftest ,
+either because
+.B st
+is not in
+.B PATH
+or because the terminfo entry is missing.
+.SH SEE ALSO
+.BR st (1),
+.BR xrdb (1),
+.BR X (7)
+.SH BUGS
+.B Ctrl+Shift+Q
+is not implemented in V1.0. Use the window manager close action instead.
+.PP
+The
+.B alpha
+patch requires a running compositor. Without one the background is opaque,
+regardless of the
+.B alpha
+value in
+.BR config.h .
+.PP
+Report bugs at the project repository.
+.SH AUTHOR
+RedhotBSD project.

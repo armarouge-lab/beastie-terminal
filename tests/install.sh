@@ -7,7 +7,7 @@ trap cleanup EXIT INT TERM
 
 INSTALL_PATH="${INSTALL_PATH:-./install.sh}"
 if [ ! -f "$INSTALL_PATH" ]; then
-    printf '[FAIL] install.sh missing at %s — run tests from the repo root\n' "$INSTALL_PATH" >&2
+    printf '[FAIL] install.sh missing at %s, run tests from the repo root\n' "$INSTALL_PATH" >&2
     exit 1
 fi
 
@@ -77,7 +77,7 @@ testAssertContains "install.sh installs xrdb dependency" \
     'x11-xserver-utils' "$installContents"
 testAssertContains "install.sh installs ncurses for tic" \
     'ncurses-bin' "$installContents"
-testAssertNotContains "install.sh no longer installs tmux (tabs feature removed)" \
+testAssertNotContains "install.sh no longer installs tmux" \
     'tmux' "$installContents"
 testAssertContains "install.sh defines installFonts" \
     'installFonts()' "$installContents"
@@ -116,7 +116,7 @@ testAssertContains "install.sh seds alpha to 0.95 in config.def.h without static
     's/^float alpha = [0-9][0-9]*\.[0-9][0-9]*;/float alpha = 0.95;/' \
     "$installContents"
 testAssertContains "install.sh has alpha fallback for rejected xinit hunk" \
-    'alpha patch hunk for xinit() was rejected' "$installContents"
+    'alpha patch hunk for xinit was rejected' "$installContents"
 testAssertContains "install.sh defines applyXresourcesPatch" \
     'applyXresourcesPatch()' "$installContents"
 testAssertContains "install.sh invokes applyXresourcesPatch before applySpawnFunction" \
@@ -128,13 +128,13 @@ testAssertContains "install.sh fails cleanly on xresources rejection" \
     'xresources patch rejected one or more hunks' "$installContents"
 testAssertContains "install.sh saves xresources rejects to dedicated dir" \
     'xresources-rej' "$installContents"
-testAssertContains "install.sh guards on resources[] in config.def.h" \
+testAssertContains "install.sh guards on resources in config.def.h" \
     'grep -q '"'"'resources\[\]'"'"' "${ST_SOURCE_DIR}/config.def.h"' \
     "$installContents"
 testAssertContains "install.sh guards on Xrm API in x.c" \
     'grep -q '"'"'XrmGetStringDatabase\|XResourceManagerString\|XrmInitialize'"'"' "${ST_SOURCE_DIR}/x.c"' \
     "$installContents"
-testAssertContains "install.sh guards on xresources background mapping to colorname[256]" \
+testAssertContains "install.sh guards on xresources background mapping to colorname 256" \
     'grep -q '"'"'{ "background",.*colorname\[256\]'"'"' "${ST_SOURCE_DIR}/config.def.h"' \
     "$installContents"
 testAssertContains "install.sh defines applySpawnFunction" \
@@ -198,9 +198,9 @@ testAssertContains "install.sh guards on terminfo registration via infocmp" \
     'infocmp -A "$TERMINFO_DIR" beastie-256color' "$installContents"
 testAssertContains "install.sh defines installWrapper" \
     'installWrapper()' "$installContents"
-testAssertContains "install.sh invokes installWrapper before installXresources" \
+testAssertContains "install.sh invokes installWrapper before installManpage" \
     'installWrapper
-    installXresources' "$installContents"
+    installManpage' "$installContents"
 testAssertContains "install.sh writes wrapper with TERM=beastie-256color" \
     'export TERM=beastie-256color' "$installContents"
 testAssertContains "install.sh writes wrapper with -t Beastie" \
@@ -215,14 +215,29 @@ testAssertContains "install.sh writes wrapper with --selftest handler" \
     '= "--selftest"' "$installContents"
 testAssertContains "install.sh guards on wrapper --version output" \
     'wrapper --version returned unexpected output' "$installContents"
+testAssertContains "install.sh defines installManpage" \
+    'installManpage()' "$installContents"
+testAssertContains "install.sh invokes installManpage before installXresources" \
+    'installManpage
+    installXresources' "$installContents"
+testAssertContains "install.sh computes Linux man directory" \
+    '/usr/local/share/man/man1' "$installContents"
+testAssertContains "install.sh computes FreeBSD man directory" \
+    '/usr/local/man/man1' "$installContents"
+testAssertContains "install.sh guards on beastie.1 presence in repo" \
+    'beastie.1 not found in repository root' "$installContents"
+testAssertContains "install.sh guards on installed man page" \
+    'man page missing after install' "$installContents"
+testAssertContains "install.sh attempts mandb on man page install" \
+    'mandb -q' "$installContents"
 testAssertContains "install.sh defines installXresources" \
     'installXresources()' "$installContents"
-testAssertContains "install.sh runs installXresources after installWrapper" \
-    'installWrapper
+testAssertContains "install.sh runs installXresources after installManpage" \
+    'installManpage
     installXresources' "$installContents"
 testAssertContains "install.sh ensures trailing newline in Xresources" \
     'tail -c 1 "$xresourcesFile"' "$installContents"
-testAssertContains "install.sh removes previous st.* properties" \
+testAssertContains "install.sh removes previous st properties" \
     'grep -v '"'"'^st\.'"'"' "$xresourcesFile"' "$installContents"
 testAssertContains "install.sh writes st.background property" \
     'st.background: #0a0a0a' "$installContents"
@@ -239,7 +254,7 @@ testAssertContains "install.sh runs xrdb -merge" \
 testAssertContains "install.sh guards on xrdb query result" \
     'xrdb -query 2>/dev/null | grep -q '"'"'^st\.background:'"'"'' \
     "$installContents"
-testAssertContains "install.sh documents restart-to-apply for Xresources" \
+testAssertContains "install.sh documents restart to apply for Xresources" \
     'restart st to apply' "$installContents"
 testAssertNotContains "install.sh no longer promises SIGUSR1 runtime reload" \
     'kill -USR1' "$installContents"
@@ -256,7 +271,7 @@ testAssertContains "install.sh sed forces Ctrl+Shift+V" \
     '{ ControlMask|ShiftMask, XK_V, clippaste,' "$installContents"
 testAssertContains "install.sh awk-replaces colorname array" \
     'colorname' "$installContents"
-testAssertContains "install.sh awk writes background first in extra[]" \
+testAssertContains "install.sh awk writes background first in extra" \
     'extra[0] = "#0a0a0a"; extra[1] = "#e0e0e0"; extra[2] = "#ff6600"; extra[3] = "#555555"' \
     "$installContents"
 testAssertContains "install.sh forces defaultbg to 256" \
@@ -275,13 +290,13 @@ testAssertContains "install.sh injects Ctrl+Shift+N spawn beastie" \
     'XK_N, spawn, {.v = (char \*\[\]){ "beastie", NULL } }' "$installContents"
 testAssertNotContains "install.sh no longer injects Ctrl+Shift+T spawn tmux" \
     'XK_T, spawn, {.v = (char \*\[\]){ "tmux"' "$installContents"
-testAssertContains "install.sh injects Ctrl+Shift+D spawn devil ." \
+testAssertContains "install.sh injects Ctrl+Shift+D spawn devil" \
     'XK_D, spawn, {.v = (char \*\[\]){ "devil", ".", NULL } }' "$installContents"
-testAssertContains "install.sh injects Ctrl+Shift+F spawn nid ." \
+testAssertContains "install.sh injects Ctrl+Shift+F spawn nid" \
     'XK_F, spawn, {.v = (char \*\[\]){ "nid", ".", NULL } }' "$installContents"
 testAssertContains "install.sh guards on Redhot cursor color" \
     'grep -q '"'"'"#ff6600"'"'"'' "$installContents"
-testAssertContains "install.sh guards on resources[] after apply" \
+testAssertContains "install.sh guards on resources after apply" \
     'grep -q '"'"'resources\[\]'"'"' "$targetConfig"' \
     "$installContents"
 testAssertContains "install.sh guards on defaultbg 256 in config.h" \
