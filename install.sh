@@ -372,6 +372,113 @@ applyXresourcesPatch() {
     logOk "xresources wired into config.def.h and x.c"
 }
 
+applySpawnFunction() {
+    if grep -q '^spawn(const Arg \*arg)' "${ST_SOURCE_DIR}/st.c" 2>/dev/null; then
+        logInfo "spawn function already present in st.c; skipping injection"
+    else
+        grep -q '^ttynew(' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "ttynew anchor not found in st.c" "${ST_SOURCE_DIR}/st.c" \
+                            "upstream st.c layout changed"
+
+        awk '
+        BEGIN { total = 0; injected = 0 }
+        { lines[total++] = $0 }
+        END {
+            for (i = 0; i < total; i++) {
+                if (!injected && i + 1 < total \
+                    && lines[i] ~ /^(void|int)[[:space:]]*$/ \
+                    && lines[i+1] ~ /^ttynew\(/) {
+                    print "void"
+                    print "spawn(const Arg *arg)"
+                    print "{"
+                    print "\tif (fork() == 0) {"
+                    print "\t\tsetsid();"
+                    print "\t\texecvp(((char **)arg->v)[0], (char **)arg->v);"
+                    print "\t\tdie(\"st: execvp %s failed: %s\\n\", ((char **)arg->v)[0], strerror(errno));"
+                    print "\t}"
+                    print "}"
+                    print ""
+                    print lines[i]
+                    injected = 1
+                    continue
+                }
+                print lines[i]
+            }
+            if (!injected) {
+                exit 1
+            }
+        }
+        ' "${ST_SOURCE_DIR}/st.c" > "${ST_SOURCE_DIR}/st.c.tmp" \
+            || failAndExit "awk spawn injection failed" "${ST_SOURCE_DIR}/st.c" \
+                            "st.c layout changed (ttynew is not preceded by int or void)"
+
+        if [ ! -s "${ST_SOURCE_DIR}/st.c.tmp" ]; then
+            rm -f "${ST_SOURCE_DIR}/st.c.tmp"
+            failAndExit "awk produced empty output" "${ST_SOURCE_DIR}/st.c" \
+                        "check st.c integrity"
+        fi
+
+        mv "${ST_SOURCE_DIR}/st.c.tmp" "${ST_SOURCE_DIR}/st.c"
+
+        grep -q '^spawn(const Arg \*arg)' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "spawn function not present after injection" \
+                            "${ST_SOURCE_DIR}/st.c" \
+                            "awk injection failed"
+
+        grep -q 'setsid();' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "setsid call missing in spawn function" \
+                            "${ST_SOURCE_DIR}/st.c" \
+                            "awk injection incomplete"
+
+        grep -q 'execvp(((char \*\*)arg->v)\[0\]' "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "execvp call missing in spawn function" \
+                            "${ST_SOURCE_DIR}/st.c" \
+                            "awk injection incomplete"
+
+        prefixBeforeTtynew=$(grep -B1 '^ttynew(' "${ST_SOURCE_DIR}/st.c" | head -1 | tr -d '[:space:]')
+        case "$prefixBeforeTtynew" in
+            int|void) logOk "original ttynew return type '${prefixBeforeTtynew}' preserved" ;;
+            *) failAndExit "unexpected prefix before ttynew after injection" \
+                           "$prefixBeforeTtynew" \
+                           "awk injection corrupted the return type" ;;
+        esac
+
+        logOk "spawn function injected into st.c (setsid + fork + execvp on Arg.v)"
+    fi
+
+    if grep -q '^void spawn(const Arg \*);' "${ST_SOURCE_DIR}/st.h" 2>/dev/null; then
+        logInfo "spawn prototype already present in st.h; skipping injection"
+    else
+        grep -q '^} Arg;' "${ST_SOURCE_DIR}/st.h" \
+            || failAndExit "Arg union anchor not found in st.h" "${ST_SOURCE_DIR}/st.h" \
+                            "upstream st.h layout changed"
+
+        awk '
+        BEGIN { injected = 0 }
+        /^} Arg;$/ && !injected {
+            print
+            print ""
+            print "void spawn(const Arg *);"
+            injected = 1
+            next
+        }
+        { print }
+        END { if (!injected) exit 1 }
+        ' "${ST_SOURCE_DIR}/st.h" > "${ST_SOURCE_DIR}/st.h.tmp" \
+            || failAndExit "awk spawn prototype injection failed" "${ST_SOURCE_DIR}/st.h" \
+                            "st.h layout changed"
+
+        mv "${ST_SOURCE_DIR}/st.h.tmp" "${ST_SOURCE_DIR}/st.h"
+
+        grep -q '^void spawn(const Arg \*);' "${ST_SOURCE_DIR}/st.h" \
+            || failAndExit "spawn prototype not present after injection" \
+                            "${ST_SOURCE_DIR}/st.h" \
+                            "awk injection failed"
+
+        logOk "spawn prototype injected into st.h (visible to x.c and st.c)"
+    fi
+}
+
 applyConfigHeader() {
     stockConfig="${ST_SOURCE_DIR}/config.def.h"
     targetConfig="${ST_SOURCE_DIR}/config.h"
@@ -437,6 +544,22 @@ applyConfigHeader() {
         || failAndExit "sed defaultXX alignment failed" "$targetConfig" \
                         "config.h layout changed"
 
+    awk '
+    BEGIN { injected = 0 }
+    /clippaste,/ && !injected {
+        print
+        print "\t{ ControlMask|ShiftMask, XK_N, spawn, {.v = (char *[]){ \"beastie\", NULL } } },"
+        print "\t{ ControlMask|ShiftMask, XK_D, spawn, {.v = (char *[]){ \"devil\", \".\", NULL } } },"
+        print "\t{ ControlMask|ShiftMask, XK_F, spawn, {.v = (char *[]){ \"nid\", \".\", NULL } } },"
+        injected = 1
+        next
+    }
+    { print }
+    ' "$targetConfig" > "$targetConfig.tmp" \
+        || failAndExit "awk spawn keybindings injection failed" "$targetConfig" \
+                        "config.h layout changed"
+    mv "$targetConfig.tmp" "$targetConfig"
+
     grep -q 'Iosevka Term:size=13:antialias=true:autohint=true' "$targetConfig" \
         || failAndExit "Iosevka font not applied to config.h" "$targetConfig" \
                         "sed font replacement failed"
@@ -464,8 +587,17 @@ applyConfigHeader() {
     grep -q 'unsigned int defaultcs = 258;' "$targetConfig" \
         || failAndExit "defaultcs not aligned to 258 in config.h" "$targetConfig" \
                         "sed defaultXX alignment failed"
+    grep -q 'XK_N, spawn, {.v = (char \*\[\]){ "beastie", NULL } }' "$targetConfig" \
+        || failAndExit "Ctrl+Shift+N spawn keybinding missing from config.h" "$targetConfig" \
+                        "awk spawn keybindings injection failed"
+    grep -q 'XK_D, spawn, {.v = (char \*\[\]){ "devil", ".", NULL } }' "$targetConfig" \
+        || failAndExit "Ctrl+Shift+D spawn keybinding missing from config.h" "$targetConfig" \
+                        "awk spawn keybindings injection failed"
+    grep -q 'XK_F, spawn, {.v = (char \*\[\]){ "nid", ".", NULL } }' "$targetConfig" \
+        || failAndExit "Ctrl+Shift+F spawn keybinding missing from config.h" "$targetConfig" \
+                        "awk spawn keybindings injection failed"
 
-    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, alpha 0.95, xresources, aligned defaultXX"
+    logOk "config.h themed with Redhot palette, Iosevka Term, Ctrl+Shift+C/V, alpha 0.95, xresources, aligned defaultXX, spawn keybindings"
 }
 
 buildSource() {
@@ -557,7 +689,8 @@ reportNextSteps() {
     logInfo "next step 2: confirm dark background with transparency, light foreground, orange cursor, Iosevka Term glyphs"
     logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st to apply (Xresources is read at startup, not on SIGUSR1)"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
-    logInfo "next step 5: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
+    logInfo "next step 5: Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH; Ctrl+Shift+N needs the beastie wrapper (Bloco 8)"
+    logInfo "next step 6: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
 main() {
@@ -570,6 +703,7 @@ main() {
     patchConfigMk
     applyAlphaPatch
     applyXresourcesPatch
+    applySpawnFunction
     applyConfigHeader
     buildSource
     installXresources

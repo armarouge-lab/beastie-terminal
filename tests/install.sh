@@ -75,6 +75,8 @@ testAssertContains "install.sh installs libxrender-dev for alpha" \
     'libxrender-dev' "$installContents"
 testAssertContains "install.sh installs xrdb dependency" \
     'x11-xserver-utils' "$installContents"
+testAssertNotContains "install.sh no longer installs tmux (tabs feature removed)" \
+    'tmux' "$installContents"
 testAssertContains "install.sh defines installFonts" \
     'installFonts()' "$installContents"
 testAssertContains "install.sh invokes installFonts before downloadSource" \
@@ -115,9 +117,9 @@ testAssertContains "install.sh has alpha fallback for rejected xinit hunk" \
     'alpha patch hunk for xinit() was rejected' "$installContents"
 testAssertContains "install.sh defines applyXresourcesPatch" \
     'applyXresourcesPatch()' "$installContents"
-testAssertContains "install.sh invokes applyXresourcesPatch before applyConfigHeader" \
+testAssertContains "install.sh invokes applyXresourcesPatch before applySpawnFunction" \
     'applyXresourcesPatch
-    applyConfigHeader' "$installContents"
+    applySpawnFunction' "$installContents"
 testAssertContains "install.sh downloads xresources patch" \
     'st-xresources-20200604-9ba7ecf.diff' "$installContents"
 testAssertContains "install.sh fails cleanly on xresources rejection" \
@@ -133,6 +135,32 @@ testAssertContains "install.sh guards on Xrm API in x.c" \
 testAssertContains "install.sh guards on xresources background mapping to colorname[256]" \
     'grep -q '"'"'{ "background",.*colorname\[256\]'"'"' "${ST_SOURCE_DIR}/config.def.h"' \
     "$installContents"
+testAssertContains "install.sh defines applySpawnFunction" \
+    'applySpawnFunction()' "$installContents"
+testAssertContains "install.sh invokes applySpawnFunction before applyConfigHeader" \
+    'applySpawnFunction
+    applyConfigHeader' "$installContents"
+testAssertContains "install.sh anchors spawn injection on ttynew" \
+    'ttynew anchor not found in st.c' "$installContents"
+testAssertContains "install.sh uses lookahead line-array for spawn injection" \
+    'lines[i+1] ~ /^ttynew\(/' "$installContents"
+testAssertContains "install.sh re-prints original prefix after spawn injection" \
+    'print lines[i]' "$installContents"
+testAssertContains "install.sh injects setsid before execvp in spawn" \
+    'print "\\t\\tsetsid();"' "$installContents"
+testAssertContains "install.sh guards on setsid in spawn" \
+    'grep -q '"'"'setsid();'"'"' "${ST_SOURCE_DIR}/st.c"' \
+    "$installContents"
+testAssertContains "install.sh injects fork+execvp spawn function" \
+    'execvp(((char \*\*)arg->v)\[0\]' "$installContents"
+testAssertContains "install.sh guards on preserved prefix before ttynew" \
+    'original ttynew return type' "$installContents"
+testAssertContains "install.sh injects spawn prototype into st.h" \
+    'spawn prototype injected into st.h' "$installContents"
+testAssertContains "install.sh guards on Arg union anchor in st.h" \
+    'Arg union anchor not found in st.h' "$installContents"
+testAssertContains "install.sh guards on spawn prototype in st.h after injection" \
+    'spawn prototype not present after injection' "$installContents"
 testAssertContains "install.sh defines installXresources" \
     'installXresources()' "$installContents"
 testAssertContains "install.sh runs installXresources after buildSource" \
@@ -189,6 +217,14 @@ testAssertContains "install.sh forces defaultcs to 258" \
 testAssertContains "install.sh forces defaultrcs to 259" \
     's/^unsigned int defaultrcs = [0-9][0-9]*;/unsigned int defaultrcs = 259;/' \
     "$installContents"
+testAssertContains "install.sh injects Ctrl+Shift+N spawn beastie" \
+    'XK_N, spawn, {.v = (char \*\[\]){ "beastie", NULL } }' "$installContents"
+testAssertNotContains "install.sh no longer injects Ctrl+Shift+T spawn tmux" \
+    'XK_T, spawn, {.v = (char \*\[\]){ "tmux"' "$installContents"
+testAssertContains "install.sh injects Ctrl+Shift+D spawn devil ." \
+    'XK_D, spawn, {.v = (char \*\[\]){ "devil", ".", NULL } }' "$installContents"
+testAssertContains "install.sh injects Ctrl+Shift+F spawn nid ." \
+    'XK_F, spawn, {.v = (char \*\[\]){ "nid", ".", NULL } }' "$installContents"
 testAssertContains "install.sh guards on Redhot cursor color" \
     'grep -q '"'"'"#ff6600"'"'"'' "$installContents"
 testAssertContains "install.sh guards on resources[] after apply" \
@@ -203,6 +239,11 @@ testAssertContains "install.sh guards on defaultfg 257 in config.h" \
 testAssertContains "install.sh guards on defaultcs 258 in config.h" \
     'grep -q '"'"'unsigned int defaultcs = 258;'"'"' "$targetConfig"' \
     "$installContents"
+testAssertContains "install.sh guards on Ctrl+Shift+N spawn after apply" \
+    'grep -q '"'"'XK_N, spawn, {.v = (char \*\[\]){ "beastie", NULL } }'"'"' "$targetConfig"' \
+    "$installContents"
+testAssertNotContains "install.sh no longer guards on Ctrl+Shift+T spawn after apply" \
+    'grep -q '"'"'XK_T, spawn' "$installContents"
 testAssertContains "install.sh keeps patch tool available" \
     'patch \' "$installContents"
 
