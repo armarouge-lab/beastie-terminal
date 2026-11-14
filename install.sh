@@ -825,10 +825,10 @@ installXresources() {
 reportNextSteps() {
     logInfo "next step 1: run beastie --version and beastie --selftest to verify the wrapper"
     logInfo "next step 2: run beastie (no -e) for an interactive shell with prompt showing cwd"
-    logInfo "next step 3: confirm window title is 'Beastie', dark bg with transparency, orange cursor, Iosevka Term glyphs"
+    logInfo "next step 3: run 'xrdb -merge ~/.Xresources' then restart st to apply; confirm window title is 'Beastie', dark bg with transparency, orange cursor, Iosevka Term glyphs"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
     logInfo "next step 5: Ctrl+Shift+N spawns another beastie window; Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH"
-    logInfo "next step 6: within beastie, tmux/htop/vim now work because TERM=beastie-256color is registered"
+    logInfo "next step 6: within beastie, htop/vim/mc now work because TERM=beastie-256color is registered"
     logInfo "next step 7: run ${BEASTIE_ROOT}/tests/detect-os.sh and ${BEASTIE_ROOT}/tests/install.sh"
 }
 
