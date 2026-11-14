@@ -479,6 +479,34 @@ applySpawnFunction() {
     fi
 }
 
+applyWindowTitle() {
+    if grep -q 'Beastie' "${ST_SOURCE_DIR}/x.c" 2>/dev/null && \
+       grep -qE 'opt_title[[:space:]]*\?[[:space:]]*opt_title[[:space:]]*:[[:space:]]*"Beastie"' "${ST_SOURCE_DIR}/x.c" 2>/dev/null; then
+        logInfo "window title already set to Beastie in x.c; skipping"
+        return 0
+    fi
+
+    if grep -qE 'opt_title[[:space:]]*\?[[:space:]]*opt_title[[:space:]]*:[[:space:]]*"st"' "${ST_SOURCE_DIR}/x.c" 2>/dev/null; then
+        sed -i.bak -E 's/opt_title[[:space:]]*\?[[:space:]]*opt_title[[:space:]]*:[[:space:]]*"st"/opt_title ? opt_title : "Beastie"/g' \
+            "${ST_SOURCE_DIR}/x.c" \
+            || failAndExit "sed window title replacement failed" "${ST_SOURCE_DIR}/x.c" \
+                            "x.c layout changed"
+        logOk "window title defaulted to Beastie (x.c opt_title ternary)"
+        return 0
+    fi
+
+    if grep -q 'opt_title = "st"' "${ST_SOURCE_DIR}/st.c" 2>/dev/null; then
+        sed -i.bak 's/opt_title = "st"/opt_title = "Beastie"/g' \
+            "${ST_SOURCE_DIR}/st.c" \
+            || failAndExit "sed opt_title default failed" "${ST_SOURCE_DIR}/st.c" \
+                            "st.c layout changed"
+        logOk "window title defaulted to Beastie (st.c opt_title default)"
+        return 0
+    fi
+
+    logWarn "window title anchor not found in x.c or st.c; default title remains 'st'. Run with '-t Beastie' or wait for Bloco 8 (beastie wrapper passes -t Beastie)."
+}
+
 applyConfigHeader() {
     stockConfig="${ST_SOURCE_DIR}/config.def.h"
     targetConfig="${ST_SOURCE_DIR}/config.h"
@@ -685,8 +713,8 @@ installXresources() {
 
 reportNextSteps() {
     stBinaryPath="${ST_SOURCE_DIR}/st"
-    logInfo "next step 1: run ${stBinaryPath} -e sh -c 'echo TERM=\$TERM; read x'"
-    logInfo "next step 2: confirm dark background with transparency, light foreground, orange cursor, Iosevka Term glyphs"
+    logInfo "next step 1: run ${stBinaryPath} (no -e) for an interactive shell; the shell PS1 shows your cwd (e.g. root@minios:~/beastie#)"
+    logInfo "next step 2: if title shows 'st' instead of 'Beastie', run with '-t Beastie' or wait for Bloco 8 (beastie wrapper); the rest (dark bg, transparency, Iosevka) is already active"
     logInfo "next step 3: change st.background to a distinct color, run 'xrdb -merge ~/.Xresources', restart st to apply (Xresources is read at startup, not on SIGUSR1)"
     logInfo "next step 4: run seq 1 200 and press Shift+PgUp to scroll back"
     logInfo "next step 5: Ctrl+Shift+D and Ctrl+Shift+F need devil/nid on PATH; Ctrl+Shift+N needs the beastie wrapper (Bloco 8)"
@@ -704,6 +732,7 @@ main() {
     applyAlphaPatch
     applyXresourcesPatch
     applySpawnFunction
+    applyWindowTitle
     applyConfigHeader
     buildSource
     installXresources

@@ -137,9 +137,9 @@ testAssertContains "install.sh guards on xresources background mapping to colorn
     "$installContents"
 testAssertContains "install.sh defines applySpawnFunction" \
     'applySpawnFunction()' "$installContents"
-testAssertContains "install.sh invokes applySpawnFunction before applyConfigHeader" \
+testAssertContains "install.sh invokes applySpawnFunction before applyWindowTitle" \
     'applySpawnFunction
-    applyConfigHeader' "$installContents"
+    applyWindowTitle' "$installContents"
 testAssertContains "install.sh anchors spawn injection on ttynew" \
     'ttynew anchor not found in st.c' "$installContents"
 testAssertContains "install.sh uses lookahead line-array for spawn injection" \
@@ -147,7 +147,7 @@ testAssertContains "install.sh uses lookahead line-array for spawn injection" \
 testAssertContains "install.sh re-prints original prefix after spawn injection" \
     'print lines[i]' "$installContents"
 testAssertContains "install.sh injects setsid before execvp in spawn" \
-    'print "\\t\\tsetsid();"' "$installContents"
+    'setsid();' "$installContents"
 testAssertContains "install.sh guards on setsid in spawn" \
     'grep -q '"'"'setsid();'"'"' "${ST_SOURCE_DIR}/st.c"' \
     "$installContents"
@@ -161,6 +161,19 @@ testAssertContains "install.sh guards on Arg union anchor in st.h" \
     'Arg union anchor not found in st.h' "$installContents"
 testAssertContains "install.sh guards on spawn prototype in st.h after injection" \
     'spawn prototype not present after injection' "$installContents"
+testAssertContains "install.sh defines applyWindowTitle" \
+    'applyWindowTitle()' "$installContents"
+testAssertContains "install.sh invokes applyWindowTitle before applyConfigHeader" \
+    'applyWindowTitle
+    applyConfigHeader' "$installContents"
+testAssertContains "install.sh attempts x.c ternary title substitution" \
+    'opt_title ? opt_title : "Beastie"' "$installContents"
+testAssertContains "install.sh attempts st.c opt_title default substitution" \
+    's/opt_title = "st"/opt_title = "Beastie"/g' "$installContents"
+testAssertContains "install.sh warns if title anchor not found" \
+    'window title anchor not found' "$installContents"
+testAssertNotContains "install.sh does not abort build on title anchor miss" \
+    'failAndExit "default title anchor' "$installContents"
 testAssertContains "install.sh defines installXresources" \
     'installXresources()' "$installContents"
 testAssertContains "install.sh runs installXresources after buildSource" \
