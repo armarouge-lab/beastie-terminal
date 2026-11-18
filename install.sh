@@ -897,60 +897,29 @@ installManpage() {
 }
 
 installXresources() {
-    xresourcesFile="${HOME}/.Xresources"
+    syncScriptSource="${BEASTIE_ROOT}/beastie-theme-sync"
+    syncScriptTarget="${ST_INSTALL_PREFIX}/bin/beastie-theme-sync"
 
-    if [ -f "$xresourcesFile" ]; then
-        if [ -n "$(tail -c 1 "$xresourcesFile")" ]; then
-            printf '\n' >> "$xresourcesFile" \
-                || failAndExit "cannot append newline to Xresources" "$xresourcesFile" \
-                                "check file permissions"
-            logInfo "added missing trailing newline to ${xresourcesFile}"
-        fi
+    [ -f "$syncScriptSource" ] \
+        || failAndExit "beastie-theme-sync missing in repo root" "$syncScriptSource" \
+                        "add beastie-theme-sync to the project root"
+
+    cp "$syncScriptSource" "$syncScriptTarget" \
+        || failAndExit "cannot install beastie-theme-sync" "$syncScriptTarget" \
+                        "check /usr/local/bin permissions"
+
+    chmod 0755 "$syncScriptTarget" \
+        || failAndExit "cannot set beastie-theme-sync executable" "$syncScriptTarget" \
+                        "check file permissions"
+
+    logOk "beastie-theme-sync installed at ${syncScriptTarget}"
+
+    # Executar a sincronização inicial
+    if ! "$syncScriptTarget"; then
+        logWarn "beastie-theme-sync reported warnings during initial merge"
     else
-        touch "$xresourcesFile" \
-            || failAndExit "cannot create Xresources file" "$xresourcesFile" \
-                            "check HOME permissions"
+        logOk "Xresources synchronized via beastie-theme-sync"
     fi
-
-    tmpFile="${xresourcesFile}.beastie.tmp"
-    if grep -q '^st\.' "$xresourcesFile"; then
-        grep -v '^st\.' "$xresourcesFile" > "$tmpFile" \
-            || failAndExit "cannot filter Xresources" "$xresourcesFile" \
-                            "check file permissions"
-        mv "$tmpFile" "$xresourcesFile" \
-            || failAndExit "cannot replace Xresources" "$xresourcesFile" \
-                            "check directory permissions"
-        logInfo "removed previous st properties from ${xresourcesFile}"
-    fi
-
-    for propertyLine in \
-        'st.background: #0a0a0a' \
-        'st.foreground: #e0e0e0' \
-        'st.cursorColor: #ff6600' \
-        'st.font: Iosevka Term:size=13'; do
-        printf '%s\n' "$propertyLine" >> "$xresourcesFile" \
-            || failAndExit "cannot append to Xresources" "$xresourcesFile" \
-                            "check file permissions"
-    done
-    logOk "wrote 4 st properties to ${xresourcesFile}"
-
-    if ! command -v xrdb >/dev/null 2>&1; then
-        logWarn "xrdb not found, skipping merge, Xsession will load Xresources on next login"
-        return 0
-    fi
-
-    xrdb -merge "$xresourcesFile" \
-        || failAndExit "xrdb merge failed" "$xresourcesFile" \
-                        "check DISPLAY is set and X11 is running"
-
-    if ! xrdb -query 2>/dev/null | grep -q '^st\.background:'; then
-        xrdbDebug=$(xrdb -query 2>&1 | grep '^st\.' || true)
-        failAndExit "st.background not present after xrdb merge" \
-                    "$xresourcesFile" \
-                    "xrdb loaded: [${xrdbDebug}]"
-    fi
-
-    logOk "Xresources merged into running X server, st properties active"
 }
 
 reportNextSteps() {

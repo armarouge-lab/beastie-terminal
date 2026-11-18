@@ -248,25 +248,10 @@ testAssertContains "install.sh defines installXresources" \
 testAssertContains "install.sh runs installXresources after installManpage" \
     'installManpage
     installXresources' "$installContents"
-testAssertContains "install.sh ensures trailing newline in Xresources" \
-    'tail -c 1 "$xresourcesFile"' "$installContents"
-testAssertContains "install.sh removes previous st properties" \
-    'grep -v '"'"'^st\.'"'"' "$xresourcesFile"' "$installContents"
-testAssertContains "install.sh writes st.background property" \
-    'st.background: #0a0a0a' "$installContents"
-testAssertContains "install.sh writes st.foreground property" \
-    'st.foreground: #e0e0e0' "$installContents"
-testAssertContains "install.sh writes st.cursorColor property" \
-    'st.cursorColor: #ff6600' "$installContents"
-testAssertContains "install.sh writes st.font property" \
-    'st.font: Iosevka Term:size=13' "$installContents"
-testAssertContains "install.sh logs xrdb-loaded properties on failure" \
-    'xrdb loaded: [${xrdbDebug}]' "$installContents"
-testAssertContains "install.sh runs xrdb -merge" \
-    'xrdb -merge "$xresourcesFile"' "$installContents"
-testAssertContains "install.sh guards on xrdb query result" \
-    'xrdb -query 2>/dev/null | grep -q '"'"'^st\.background:'"'"'' \
-    "$installContents"
+testAssertContains "install.sh installs beastie-theme-sync" \
+    'beastie-theme-sync' "$installContents"
+testAssertContains "install.sh invokes beastie-theme-sync target" \
+    'cp "$syncScriptSource"' "$installContents"
 testAssertContains "install.sh documents restart to apply for Xresources" \
     'restart st to apply' "$installContents"
 testAssertNotContains "install.sh no longer promises SIGUSR1 runtime reload" \

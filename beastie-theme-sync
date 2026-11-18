@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+THEME_CONF="/etc/redhot/theme.conf"
+XRESOURCES_FILE="${HOME}/.Xresources"
+
+# Cores padrão do Beastie (Redhot Theme)
+BG="#0a0a0a"
+FG="#e0e0e0"
+CURSOR="#ff6600"
+FONT="Iosevka Term:size=13"
+
+# Se o tema central da suíte existir, podemos ler tokens básicos se definidos
+if [ -f "$THEME_CONF" ]; then
+    # Exemplo de leitura flat KV (compatível com redhot-base)
+    while IFS='=' read -r key value; do
+        case "$key" in
+            theme.background) BG="$value" ;;
+            theme.foreground) FG="$value" ;;
+            theme.cursor)     CURSOR="$value" ;;
+            theme.font)       FONT="$value" ;;
+        esac
+    done < "$THEME_CONF"
+fi
+
+# Garantir trailing newline no Xresources
+if [ -f "$XRESOURCES_FILE" ]; then
+    if [ -n "$(tail -c 1 "$XRESOURCES_FILE")" ]; then
+        printf '\n' >> "$XRESOURCES_FILE"
+    fi
+else
+    touch "$XRESOURCES_FILE"
+fi
+
+# Remover propriedades antigas do st
+tmpFile="${XRESOURCES_FILE}.beastie.tmp"
+if grep -q '^st\.' "$XRESOURCES_FILE"; then
+    grep -v '^st\.' "$XRESOURCES_FILE" > "$tmpFile"
+    mv "$tmpFile" "$XRESOURCES_FILE"
+fi
+
+# Escrever as propriedades atualizadas
+printf '%s\n' \
+    "st.background: $BG" \
+    "st.foreground: $FG" \
+    "st.cursorColor: $CURSOR" \
+    "st.font: $FONT" >> "$XRESOURCES_FILE"
+
+# Mesclar no servidor X11 se disponível
+if command -v xrdb >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+    xrdb -merge "$XRESOURCES_FILE"
+    printf '[ OK ] beastie-theme-sync: Xresources updated and merged\n'
+else
+    printf '[ OK ] beastie-theme-sync: Xresources updated (xrdb skipped, no DISPLAY)\n'
+fi
